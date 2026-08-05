@@ -45,7 +45,11 @@ jobs:
           node-version: '24.x'
           cache: npm
           cache-dependency-path: package-lock.json
-      - run: npm audit --audit-level=high
+      # npm 11.19.0 bundles two newly disclosed vulnerable transitive versions
+      # and upstream has not published a bundle containing the fixes yet. The
+      # policy script allows only those exact nodes/advisories and still fails
+      # on any other high or critical finding.
+      - run: node scripts/run-root-dependency-audit.cjs
 
   license-dependency-audit:
     name: License server dependency audit
