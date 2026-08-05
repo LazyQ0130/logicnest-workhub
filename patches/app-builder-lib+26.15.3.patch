@@ -318,11 +318,13 @@ index 053772f..b6ed86a 100644
 +!endif
 +
  SetOutPath $INSTDIR
- 
+-
++
  !ifdef UNINSTALLER_ICON
 @@ -64,6 +78,9 @@ SetOutPath $INSTDIR
  !endif
- 
+-
++
  !insertmacro installApplicationFiles
 +!ifmacrodef customBeforeRegistryAddInstallInfo
 +  !insertmacro customBeforeRegistryAddInstallInfo
