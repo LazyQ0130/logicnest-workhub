@@ -1,53 +1,37 @@
-## Summary
-<!-- Provide a brief summary of the changes in this PR -->
+## Summary / 变更摘要
 
-## Related Issue
-<!-- Link to the related issue(s) if applicable -->
-Fixes #(issue number)
+<!-- Explain what changed and why. Keep the scope specific to LogicNest WorkHub. -->
 
-## Changes Made
-<!-- Describe the changes you've made -->
-- 
-- 
-- 
+## Related work / 关联事项
 
-## Type of Change
-<!-- Mark the relevant option with an [x] -->
-- [ ] Bug fix (non-breaking change which fixes an issue)
-- [ ] New feature (non-breaking change which adds functionality)
-- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
-- [ ] Code refactoring
-- [ ] Documentation update
-- [ ] Performance improvement
-- [ ] Other (please describe):
+<!-- Link an issue or decision record when applicable. -->
 
-## Testing
-<!-- Describe the tests you've performed -->
-- [ ] Tested locally
-- [ ] Added new tests
-- [ ] Updated existing tests
-- [ ] Manual testing performed
+## Affected areas / 影响范围
 
-## Screenshots (if applicable)
-<!-- Add screenshots for UI changes -->
+- [ ] Desktop renderer
+- [ ] Electron main, preload, or IPC
+- [ ] OpenClaw integration
+- [ ] Meeting rooms or scheduled tasks
+- [ ] License server
+- [ ] Operations center
+- [ ] Skills, MCP, or IM
+- [ ] Packaging, CI, or repository governance
+- [ ] Documentation only
 
-## Checklist
-<!-- Mark the completed items with [x] -->
-- [ ] My code follows the project's style guidelines
-- [ ] I have performed a self-review of my code
-- [ ] I have commented my code, particularly in hard-to-understand areas
-- [ ] I have made corresponding changes to the documentation
-- [ ] My changes generate no new warnings
-- [ ] I have added tests that prove my fix is effective or that my feature works
-- [ ] New and existing unit tests pass locally with my changes
+## Verification / 验证
 
-## Electron-Specific Changes
-<!-- If your PR includes Electron-specific changes, describe them here -->
-- [ ] Changes to main process (src/main/)
-- [ ] Changes to preload script (src/main/preload.ts)
-- [ ] Changes to IPC communication
-- [ ] Changes to window management
-- [ ] None
+<!-- List the exact commands and manual checks that passed. -->
 
-## Additional Notes
-<!-- Any additional information that reviewers should know -->
+- [ ] Relevant tests pass
+- [ ] Lint passes for every changed TypeScript/TSX file
+- [ ] Required build or Electron compilation passes
+- [ ] UI changes include screenshots
+
+## Security and operations / 安全与运维
+
+- [ ] No `.env`, password, token, private key, activation-card export, database, log, installer, or generated build directory is included
+- [ ] New configuration uses committed examples or placeholders only
+- [ ] Electron IPC, storage, runtime, migration, and restart effects are documented when applicable
+- [ ] Third-party notices and upstream MIT attribution remain intact
+
+## Additional notes / 补充说明

@@ -128,9 +128,9 @@ describe('conversationOptionMatchesValue', () => {
     expect(conversationOptionMatchesValue('openclaw-weixin', 'direct:wxid_abc@im.wechat', 'wxid_abc@im.wechat')).toBe(true);
   });
 
-  test('keeps the nim pipe-delimited fallback', () => {
-    expect(conversationOptionMatchesValue('nim', 'appkey|user1', 'user1')).toBe(true);
-    expect(conversationOptionMatchesValue('telegram', 'appkey|user1', 'user1')).toBe(false);
+  test('does not apply the retired pipe-delimited fallback', () => {
+    expect(conversationOptionMatchesValue('nim', 'appkey|user1', 'user1')).toBe(false);
+    expect(conversationOptionMatchesValue('feishu', 'appkey|user1', 'user1')).toBe(false);
   });
 
   test('rejects unrelated values', () => {

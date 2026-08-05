@@ -1,31 +1,53 @@
 version: 2
+
 updates:
-  - package-ecosystem: "npm"
-    directory: "/"
+  - package-ecosystem: npm
+    directory: '/'
+    target-branch: main
     schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 10
-    labels:
-      - "dependencies"
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: ['dependencies']
     commit-message:
-      prefix: "chore"
-      include: "scope"
+      prefix: chore
+      include: scope
     groups:
       electron:
         patterns:
-          - "electron*"
-      anthropic:
-        patterns:
-          - "@anthropic-ai/*"
+          - 'electron*'
 
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  - package-ecosystem: npm
+    directory: '/services/license-server'
+    target-branch: main
     schedule:
-      interval: "weekly"
-      day: "monday"
-    labels:
-      - "dependencies"
-      - "github-actions"
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: ['dependencies', 'area: licensing']
     commit-message:
-      prefix: "ci"
+      prefix: chore
+      include: scope
+
+  - package-ecosystem: npm
+    directory: '/services/admin-web'
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: ['dependencies', 'area: operations center']
+    commit-message:
+      prefix: chore
+      include: scope
+
+  - package-ecosystem: github-actions
+    directory: '/'
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: ['dependencies', 'area: ci']
+    commit-message:
+      prefix: ci

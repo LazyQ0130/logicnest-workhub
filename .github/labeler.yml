@@ -1,87 +1,123 @@
-# Labeler Configuration
-# Automatically labels PRs based on file changes
-
-"platform: macos":
+'platform: macos':
   - changed-files:
       - any-glob-to-any-file:
-          - "build/icons/mac/**"
-          - "build/entitlements.mac.plist"
-          - "scripts/*mac*"
-          - "scripts/notarize.js"
+          - 'build/icons/mac/**'
+          - 'build/entitlements.mac.plist'
+          - 'scripts/*mac*'
+          - 'scripts/notarize.js'
 
-"platform: windows":
+'platform: windows':
   - changed-files:
       - any-glob-to-any-file:
-          - "build/icons/win/**"
-          - "scripts/*win*"
-          - "scripts/setup-python-runtime.js"
-          - "scripts/nsis-installer.nsh"
+          - 'build/icons/win/**'
+          - 'scripts/*win*'
+          - 'scripts/setup-mingit.js'
+          - 'scripts/setup-python-runtime.js'
+          - 'scripts/nsis-installer.nsh'
 
-"platform: linux":
+'platform: linux':
   - changed-files:
       - any-glob-to-any-file:
-          - "build/icons/png/**"
-          - "scripts/*linux*"
+          - 'build/icons/png/**'
+          - 'scripts/*linux*'
 
-"area: renderer":
+'area: renderer':
   - changed-files:
       - any-glob-to-any-file:
-          - "src/renderer/**"
-          - "vite.config.ts"
-          - "tailwind.config.js"
-          - "postcss.config.js"
+          - 'src/renderer/**'
+          - 'vite.config.ts'
+          - 'tailwind.config.js'
+          - 'postcss.config.js'
 
-"area: main":
+'area: main':
   - changed-files:
       - any-glob-to-any-file:
-          - "src/main/**"
-          - "src/common/**"
-          - "electron-tsconfig.json"
+          - 'src/main/**'
+          - 'electron-tsconfig.json'
 
-"area: openclaw":
+'area: shared':
   - changed-files:
       - any-glob-to-any-file:
-          - "src/main/libs/*openclaw*"
-          - "scripts/*openclaw*"
-          - "scripts/ensure-openclaw-version.cjs"
-          - "scripts/apply-openclaw-patches.cjs"
+          - 'src/shared/**'
 
-"area: skills":
+'area: openclaw':
   - changed-files:
       - any-glob-to-any-file:
-          - "SKILLs/**"
-          - "src/main/skillManager.ts"
+          - 'src/main/libs/**openclaw*'
+          - 'scripts/**openclaw*'
+          - 'scripts/patches/**'
+          - 'package.json'
 
-"area: cowork":
+'area: skills':
   - changed-files:
       - any-glob-to-any-file:
-          - "src/main/libs/cowork*"
-          - "src/renderer/components/cowork/**"
-          - "src/renderer/store/slices/coworkSlice.ts"
+          - 'SKILLs/**'
+          - 'src/main/skills/**'
 
-"area: im":
+'area: cowork':
   - changed-files:
       - any-glob-to-any-file:
-          - "src/main/im/**"
-          - "src/renderer/components/im/**"
+          - 'src/main/libs/**cowork*'
+          - 'src/renderer/components/cowork/**'
+          - 'src/renderer/services/cowork.ts'
+          - 'src/renderer/store/slices/coworkSlice.ts'
 
-"area: artifacts":
+'area: meeting rooms':
   - changed-files:
       - any-glob-to-any-file:
-          - "src/renderer/components/artifacts/**"
-          - "src/renderer/services/artifactParser.ts"
+          - 'src/main/meetingRoom/**'
+          - 'src/shared/meetingRoom/**'
+          - 'src/renderer/components/meetingRooms/**'
+          - 'src/renderer/services/meetingRoom.ts'
 
-"area: build":
+'area: licensing':
   - changed-files:
       - any-glob-to-any-file:
-          - ".github/workflows/**"
-          - "electron-builder.json"
-          - "scripts/build*.js"
-          - "scripts/*build*"
+          - 'src/main/license/**'
+          - 'src/shared/license/**'
+          - 'src/renderer/components/auth/**'
+          - 'services/license-server/**'
 
-"area: docs":
+'area: operations center':
   - changed-files:
       - any-glob-to-any-file:
-          - "docs/**"
-          - "**/*.md"
-          - "README*"
+          - 'services/admin-web/**'
+
+'area: im':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/main/im/**'
+          - 'src/shared/im/**'
+          - 'src/renderer/components/im/**'
+
+'area: scheduled tasks':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/scheduledTask/**'
+          - 'src/renderer/components/scheduledTasks/**'
+
+'area: artifacts':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/renderer/components/artifacts/**'
+          - 'src/renderer/services/artifactParser.ts'
+
+'area: ci':
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/**'
+
+'area: packaging':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'electron-builder.json'
+          - 'scripts/electron-builder-config.cjs'
+          - 'scripts/build*'
+          - 'scripts/dist*'
+
+'area: docs':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'docs/**'
+          - '**/*.md'
+          - 'README*'

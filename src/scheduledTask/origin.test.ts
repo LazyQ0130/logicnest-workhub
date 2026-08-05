@@ -16,12 +16,12 @@ test('infer: managed key without IM channel -> cowork origin + ui_session bindin
 
 test('infer: managed key with IM announce channel -> im origin + im_session binding', () => {
   const result = inferOriginAndBinding(
-    makeTask({ sessionKey: 'agent:main:lobsterai:sess-002', delivery: { mode: DeliveryMode.Announce, channel: 'telegram' } })
+    makeTask({ sessionKey: 'agent:main:lobsterai:sess-002', delivery: { mode: DeliveryMode.Announce, channel: 'feishu' } })
   );
   expect(result.origin.kind).toBe(OriginKind.IM);
-  expect((result.origin as any).platform).toBe('telegram');
+  expect((result.origin as any).platform).toBe('feishu');
   expect(result.binding.kind).toBe(BindingKind.IMSession);
-  expect((result.binding as any).platform).toBe('telegram');
+  expect((result.binding as any).platform).toBe('feishu');
   expect((result.binding as any).sessionId).toBe('sess-002');
 });
 
@@ -41,15 +41,15 @@ test('infer: managed key with channel=last -> cowork origin (last is not an IM p
   expect(result.binding.kind).toBe(BindingKind.UISession);
 });
 
-test('infer: telegram channel key -> im origin + im_session binding', () => {
+test('infer: feishu channel key -> im origin + im_session binding', () => {
   const result = inferOriginAndBinding(
-    makeTask({ sessionKey: 'agent:main:telegram:user:12345' })
+    makeTask({ sessionKey: 'agent:main:feishu:direct:ou_12345' })
   );
   expect(result.origin.kind).toBe(OriginKind.IM);
-  expect((result.origin as any).platform).toBe('telegram');
+  expect((result.origin as any).platform).toBe('feishu');
   expect(result.binding.kind).toBe(BindingKind.IMSession);
-  expect((result.binding as any).platform).toBe('telegram');
-  expect((result.binding as any).conversationId).toBe('user:12345');
+  expect((result.binding as any).platform).toBe('feishu');
+  expect((result.binding as any).conversationId).toBe('direct:ou_12345');
 });
 
 test('infer: dingtalk connector channel key -> im origin', () => {

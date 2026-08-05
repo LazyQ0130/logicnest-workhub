@@ -2,13 +2,26 @@ name: Electron Verify
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
+    branches: [main]
     paths:
       - 'src/**'
-      - 'electron-builder.json'
+      - 'scripts/**'
       - 'package.json'
+      - 'package-lock.json'
+      - 'electron-builder.json'
+      - 'electron-tsconfig.json'
       - 'vite.config.ts'
+      - '.github/workflows/electron-verify.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: electron-verify-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -16,44 +29,37 @@ env:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
-      - uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('package.json') }}
-          restore-keys: npm-${{ runner.os }}-
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Install Electron Dependencies
+      - name: Install Electron system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 xdg-utils libatspi2.0-0 libuuid1 libsecret-1-0
 
-      - run: npm install
-      - run: npm run build
-      - run: npm run compile:electron
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Build production bundles
+        run: npm run build
+      - name: Compile Electron main and preload
+        run: npm run compile:electron
 
-      - name: Verify Build Structure
+      - name: Verify build structure
+        shell: bash
         run: |
-          echo "=== Verifying dist/ structure ==="
-          for f in dist/index.html; do
-            if [ ! -f "$f" ]; then
-              echo "❌ $f not found"
-              exit 1
-            fi
+          set -euo pipefail
+          required_files=(
+            dist/index.html
+            dist-electron/main.js
+            dist-electron/preload.js
+          )
+          for file in "${required_files[@]}"; do
+            test -f "$file" || { echo "Missing required build output: $file"; exit 1; }
           done
-          echo "✓ dist/ structure verified"
-
-          echo "=== Verifying dist-electron/ structure ==="
-          for f in dist-electron/main.js dist-electron/preload.js; do
-            if [ ! -f "$f" ]; then
-              echo "❌ $f not found"
-              exit 1
-            fi
-          done
-          echo "✓ dist-electron/ structure verified"
-
-          echo "=== Build verification complete ==="
+          echo "Electron build structure verified."

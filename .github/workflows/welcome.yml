@@ -6,10 +6,14 @@ on:
   issues:
     types: [opened]
 
+permissions:
+  contents: read
+
 jobs:
   welcome:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       issues: write
       pull-requests: write
     steps:
@@ -17,44 +21,10 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           issue-message: |
-            👋 感谢你提交第一个 Issue！欢迎参与 LobsterAI 社区。
+            感谢提交逻栖工枢（LogicNest WorkHub）的首个 Issue。请确认问题描述、复现步骤、环境信息和已脱敏日志完整，维护者会按项目优先级进行处理。
 
-            请确认已完成以下事项：
-            - 完整填写 Issue 模板
-            - 搜索已有 Issue，避免重复提交
-            - 提供复现步骤（Bug 类）
-
-            我们会尽快处理，感谢你的贡献！
-
-            ---
-
-            👋 Thanks for opening your first issue! We appreciate your contribution to LobsterAI.
-
-            Please make sure you've:
-            - Filled out the issue template completely
-            - Searched for existing issues to avoid duplicates
-            - Provided steps to reproduce (for bugs)
-
-            We'll review your issue as soon as possible.
+            Thank you for opening your first LogicNest WorkHub issue. Please make sure the description, reproduction steps, environment details, and redacted logs are complete. A maintainer will review it according to project priorities.
           pr-message: |
-            👋 感谢你提交第一个 Pull Request！欢迎参与 LobsterAI 社区。
+            感谢提交逻栖工枢（LogicNest WorkHub）的首个 Pull Request。请确认变更范围清晰、相关验证已完成、UI 变更附有截图，并且未提交密钥或本地运行数据。
 
-            请确认 PR 已满足以下要求：
-            - 遵循 [Conventional Commits](https://www.conventionalcommits.org/) 规范
-            - 包含清晰的变更说明
-            - UI 变更附上截图
-            - 通过所有 CI 检查
-
-            维护者会尽快 Review，感谢你的贡献！
-
-            ---
-
-            👋 Thanks for your first pull request to LobsterAI! We appreciate your contribution.
-
-            Please make sure your PR:
-            - Follows the [Conventional Commits](https://www.conventionalcommits.org/) spec
-            - Includes a clear description of the changes
-            - Has screenshots for UI changes
-            - Passes all CI checks
-
-            A maintainer will review your PR soon. Thank you! 🚀
+            Thank you for your first LogicNest WorkHub pull request. Please confirm that the scope is clear, relevant checks pass, UI changes include screenshots, and no secrets or local runtime data are included.

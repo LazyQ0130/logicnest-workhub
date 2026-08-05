@@ -1,56 +1,50 @@
-name: Feature Request
-about: Suggest an idea for LobsterAI
-title: '[Feature] '
+name: Improvement proposal / 改进建议
+description: Propose a scoped improvement for LogicNest WorkHub
+title: '[Proposal] '
 labels: ['enhancement']
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to suggest a new feature!
+        本模板用于逻栖工枢（LogicNest WorkHub）内部项目协作。请聚焦问题、约束和验收标准，避免营销性描述。
 
   - type: textarea
     id: problem
     attributes:
-      label: Problem Statement
-      description: Is your feature request related to a problem? Please describe.
-      placeholder: A clear and concise description of what the problem is...
+      label: Problem / 待解决问题
+      description: Describe the concrete user or operational problem.
     validations:
       required: true
 
   - type: textarea
-    id: solution
+    id: scope
     attributes:
-      label: Proposed Solution
-      description: Describe the solution you'd like.
-      placeholder: A clear and concise description of what you want to happen...
+      label: Proposed scope / 建议范围
+      description: State what should change and what must remain unchanged.
     validations:
       required: true
 
   - type: textarea
-    id: alternatives
+    id: acceptance
     attributes:
-      label: Alternatives Considered
-      description: Describe any alternative solutions or features you've considered.
-      placeholder: Any alternative approaches...
+      label: Acceptance criteria / 验收标准
+      placeholder: |
+        - [ ] Observable outcome 1
+        - [ ] Observable outcome 2
     validations:
-      required: false
+      required: true
 
   - type: textarea
-    id: context
+    id: risks
     attributes:
-      label: Additional Context
-      description: Add any other context, screenshots, or examples about the feature request here.
-      placeholder: Additional context...
-    validations:
-      required: false
+      label: Risks and alternatives / 风险与替代方案
 
   - type: checkboxes
-    id: terms
+    id: checklist
     attributes:
-      label: Checklist
-      description: By submitting this issue, you confirm the following
+      label: Checklist / 检查项
       options:
-        - label: I have searched for existing feature requests
+        - label: I searched existing issues and proposals.
           required: true
-        - label: This feature would be useful to other users
+        - label: The proposal contains no credentials, private customer data, or activation-card data.
           required: true

@@ -1,85 +1,83 @@
-name: Bug Report
-about: Create a report to help us improve LobsterAI
+name: Bug report / 缺陷报告
+description: Report a reproducible LogicNest WorkHub problem
 title: '[Bug] '
 labels: ['bug']
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to fill out this bug report!
+        请提供可复现、已脱敏的信息。不要上传密码、Token、卡密、设备指纹、数据库或包含个人信息的日志。
+
+        Provide reproducible, redacted information. Do not upload passwords, tokens, activation cards, device fingerprints, databases, or logs containing personal data.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component / 模块
+      options:
+        - Desktop application / 桌面应用
+        - OpenClaw integration / OpenClaw 集成
+        - License server / 授权服务
+        - Operations center / 运营中心
+        - Skills or MCP / 技能或 MCP
+        - Packaging or CI / 打包或 CI
+        - Other / 其他
+    validations:
+      required: true
 
   - type: textarea
     id: description
     attributes:
-      label: Bug Description
-      description: A clear and concise description of what the bug is.
-      placeholder: Describe the bug...
+      label: Problem / 问题描述
+      description: Describe the observed behavior and its impact.
     validations:
       required: true
 
   - type: textarea
     id: reproduction
     attributes:
-      label: Steps to Reproduce
-      description: Steps to reproduce the behavior.
+      label: Reproduction steps / 复现步骤
       placeholder: |
-        1. Go to '...'
-        2. Click on '...'
-        3. Scroll down to '...'
-        4. See error
+        1. Start from...
+        2. Perform...
+        3. Observe...
     validations:
       required: true
 
   - type: textarea
     id: expected
     attributes:
-      label: Expected Behavior
-      description: A clear and concise description of what you expected to happen.
-      placeholder: Describe what you expected...
-    validations:
-      required: true
-
-  - type: textarea
-    id: actual
-    attributes:
-      label: Actual Behavior
-      description: What actually happened instead.
-      placeholder: Describe what actually happened...
+      label: Expected behavior / 预期行为
     validations:
       required: true
 
   - type: textarea
     id: environment
     attributes:
-      label: Environment
-      description: |
-        Please provide the following information:
-        - OS: [e.g., macOS 14, Windows 11, Ubuntu 22.04]
-        - LobsterAI Version: [e.g., 2026.3.19]
-        - Node.js Version: [e.g., 24.0.0]
+      label: Environment / 环境
+      description: Include OS, LogicNest WorkHub version or commit, Node.js version when relevant, and deployment mode.
       placeholder: |
-        - OS: 
-        - LobsterAI Version: 
-        - Node.js Version: 
+        - OS:
+        - LogicNest WorkHub version or commit:
+        - Node.js version:
+        - Deployment mode:
     validations:
       required: true
 
   - type: textarea
-    id: logs
+    id: evidence
     attributes:
-      label: Logs/Screenshots
-      description: If applicable, add logs or screenshots to help explain your problem.
-      placeholder: Paste logs or drag screenshots here...
-    validations:
-      required: false
+      label: Redacted evidence / 已脱敏证据
+      description: Add relevant screenshots or the smallest useful log excerpt after removing sensitive data.
 
   - type: checkboxes
-    id: terms
+    id: checklist
     attributes:
-      label: Checklist
-      description: By submitting this issue, you confirm the following
+      label: Checklist / 检查项
       options:
-        - label: I have searched for existing issues
+        - label: I searched existing issues for the same problem.
           required: true
-        - label: I have provided all the requested information
+        - label: I removed secrets, credentials, activation data, and personal information.
+          required: true
+        - label: I included enough information to reproduce the problem.
           required: true
