@@ -39,7 +39,7 @@ jobs:
       LOGICNEST_UNSIGNED_BUILD: '1'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24.x'
           cache: npm
@@ -65,7 +65,7 @@ jobs:
       LOGICNEST_UNSIGNED_BUILD: '1'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24.x'
           cache: npm
@@ -90,7 +90,7 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24.x'
           cache: npm
