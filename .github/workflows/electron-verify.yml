@@ -47,6 +47,8 @@ jobs:
         run: npm ci
       - name: Build production bundles
         run: npm run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
       - name: Compile Electron main and preload
         run: npm run compile:electron
 

@@ -39,6 +39,8 @@ jobs:
         run: npm run compile:electron
       - name: Build production bundles
         run: npm run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
       - name: Verify LogicNest branding
         run: npm run brand:scan
 
