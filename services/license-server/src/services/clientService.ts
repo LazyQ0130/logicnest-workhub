@@ -1,10 +1,12 @@
+import type { Device, Entitlement, PrismaClient, User } from '@prisma/client';
 import argon2 from 'argon2';
 import type { FastifyRequest } from 'fastify';
-import type { Prisma, PrismaClient, User, Device, Entitlement } from '@prisma/client';
-import type { AppConfig } from '../config.js';
+
 import { writeAudit } from '../audit.js';
+import type { AppConfig } from '../config.js';
 import { conflict, forbidden, notFound, unauthorized } from '../errors.js';
 import {
+  type AccessClaims,
   generateLicenseKey,
   hmacDigest,
   issueAccessToken,
@@ -16,7 +18,6 @@ import {
   phoneLast4,
   randomToken,
   validatePassword,
-  type AccessClaims,
 } from '../security.js';
 
 const ARGON2_OPTIONS = {
@@ -28,7 +29,13 @@ const ARGON2_OPTIONS = {
 
 type ClientRequest = FastifyRequest;
 
-export type RegisterInput = { phone: string; password: string; confirmPassword: string };
+export type RegisterInput = {
+  phone: string;
+  password: string;
+  confirmPassword: string;
+  deviceFingerprint?: string;
+  clientVersion?: string;
+};
 export type LoginInput = { phone: string; password: string; deviceFingerprint?: string; clientVersion?: string };
 export type RedeemInput = { licenseKey: string; deviceFingerprint: string; clientVersion?: string };
 export type HeartbeatInput = { deviceFingerprint: string; clientVersion?: string };
@@ -79,20 +86,40 @@ export class ClientService {
     validatePassword(input.password);
     if (input.password !== input.confirmPassword) throw conflict('PASSWORD_MISMATCH', 'Passwords do not match');
     const passwordHash = await argon2.hash(input.password, ARGON2_OPTIONS);
-    const user: User = await this.db.user.create({
-      data: {
-        id: newId(),
-        uid: `LN-${randomToken(8).toUpperCase().slice(0, 16)}`,
-        phoneNormalized: phone,
-        phoneLast4: phoneLast4(phone),
-        passwordHash,
-      },
+    const user: User = await this.db.$transaction(async (tx) => {
+      const existingUser = await tx.user.findUnique({ where: { phoneNormalized: phone }, select: { id: true } });
+      if (existingUser) throw conflict('PHONE_ALREADY_REGISTERED', 'An account for this phone already exists');
+
+      if (input.deviceFingerprint) {
+        const fingerprintDigest = this.deviceDigest(input.deviceFingerprint);
+        const device = await tx.device.findUnique({
+          where: { fingerprintDigest },
+          select: { userId: true, status: true },
+        });
+        if (device?.userId) {
+          throw forbidden('DEVICE_NOT_BOUND', 'This device is not available for the account');
+        }
+        if (device?.status === 'SUSPENDED') {
+          throw forbidden('DEVICE_SUSPENDED', 'This device is not available for the account');
+        }
+      }
+
+      const createdUser = await tx.user.create({
+        data: {
+          id: newId(),
+          uid: `LN-${randomToken(8).toUpperCase().slice(0, 16)}`,
+          phoneNormalized: phone,
+          phoneLast4: phoneLast4(phone),
+          passwordHash,
+        },
+      });
+      await writeAudit(tx, this.config, request, {
+        actorType: 'USER', actorId: createdUser.id, action: 'user.register', targetType: 'user', targetId: createdUser.id, result: 'SUCCESS',
+      });
+      return createdUser;
     }).catch((error: unknown) => {
       if (this.isUniqueError(error)) throw conflict('PHONE_ALREADY_REGISTERED', 'An account for this phone already exists');
       throw error;
-    });
-    await writeAudit(this.db, this.config, request, {
-      actorType: 'USER', actorId: user.id, action: 'user.register', targetType: 'user', targetId: user.id, result: 'SUCCESS',
     });
     return { user: publicUser(user) };
   }
@@ -198,7 +225,7 @@ export class ClientService {
     return { accessToken, refreshToken: result.refreshToken, tokenType: 'Bearer', expiresIn: this.config.accessTokenTtlSeconds };
   }
 
-  async logout(refreshToken: string | undefined, request: ClientRequest): Promise<{ ok: true }> {
+  async logout(refreshToken: string | undefined, _request: ClientRequest): Promise<{ ok: true }> {
     if (refreshToken) {
       await this.db.refreshToken.updateMany({ where: { tokenDigest: hmacDigest(this.config.refreshTokenHmacSecret, refreshToken), revokedAt: null }, data: { revokedAt: new Date() } });
     }

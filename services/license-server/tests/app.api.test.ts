@@ -1,10 +1,12 @@
 import { generateKeyPairSync } from 'node:crypto';
+
 import type { PrismaClient } from '@prisma/client';
-import { describe, expect, test, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+
 import { buildApp } from '../src/app.js';
 import { parseConfig } from '../src/config.js';
-import type { ClientService } from '../src/services/clientService.js';
 import type { AdminService } from '../src/services/adminService.js';
+import type { ClientService } from '../src/services/clientService.js';
 
 const pair = generateKeyPairSync('ed25519');
 const config = parseConfig({
@@ -59,6 +61,34 @@ describe('Fastify API boundary', () => {
     expect(response.statusCode).toBe(400);
     expect(response.json()).toMatchObject({ error: { code: 'INVALID_PHONE' } });
     expect(response.body).not.toContain('short');
+  });
+
+  test('forwards desktop device context to registration', async () => {
+    const register = vi.fn(clientStub.register.bind(clientStub));
+    const registrationApp = await buildApp(config, {
+      db: fakeDb,
+      clientService: { ...clientStub, register } as unknown as ClientService,
+      adminService: adminStub,
+    });
+
+    const response = await registrationApp.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: {
+        phone: '13800138000',
+        password: 'long-password',
+        confirmPassword: 'long-password',
+        deviceFingerprint: 'device-fingerprint',
+        clientVersion: '1.0.0-test',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(register).toHaveBeenCalledWith(expect.objectContaining({
+      deviceFingerprint: 'device-fingerprint',
+      clientVersion: '1.0.0-test',
+    }), expect.anything());
+    await registrationApp.close();
   });
 
   test('client login and refresh return token pair shape', async () => {

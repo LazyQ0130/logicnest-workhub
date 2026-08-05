@@ -1,13 +1,20 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { z } from 'zod';
-import { parse } from '../validation.js';
-import { forbidden, unauthorized } from '../errors.js';
-import { issueAccessToken, verifyAccessToken } from '../security.js';
-import type { AppConfig } from '../config.js';
 import type { PrismaClient } from '@prisma/client';
-import { ClientService } from '../services/clientService.js';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { z } from 'zod';
 
-const registerSchema = z.object({ phone: z.string().min(5).max(32), password: z.string().min(8).max(128), confirmPassword: z.string().min(8).max(128) });
+import type { AppConfig } from '../config.js';
+import { forbidden, unauthorized } from '../errors.js';
+import { verifyAccessToken } from '../security.js';
+import { ClientService } from '../services/clientService.js';
+import { parse } from '../validation.js';
+
+const registerSchema = z.object({
+  phone: z.string().min(5).max(32),
+  password: z.string().min(8).max(128),
+  confirmPassword: z.string().min(8).max(128),
+  deviceFingerprint: z.string().min(8).max(1024).optional(),
+  clientVersion: z.string().max(64).optional(),
+});
 const loginSchema = z.object({ phone: z.string().min(5).max(32), password: z.string().min(8).max(128), deviceFingerprint: z.string().min(8).max(1024).optional(), clientVersion: z.string().max(64).optional() });
 const refreshSchema = z.object({ refreshToken: z.string().min(20).max(256) });
 const redeemSchema = z.object({ licenseKey: z.string().min(10).max(64), deviceFingerprint: z.string().min(8).max(1024), clientVersion: z.string().max(64).optional() });

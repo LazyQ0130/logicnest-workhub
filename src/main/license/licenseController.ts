@@ -100,7 +100,12 @@ export class LicenseController {
     if (input.passwordConfirmation !== input.password) {
       throw new LicenseApiError(400, 'PASSWORD_MISMATCH', '两次输入的密码不一致');
     }
-    const response = await this.requireApi().register({ ...credentials, passwordConfirmation: input.passwordConfirmation });
+    const response = await this.requireApi().register({
+      ...credentials,
+      passwordConfirmation: input.passwordConfirmation,
+      deviceFingerprint: this.deviceFingerprint,
+      clientVersion: this.clientVersion,
+    });
     if (!response.accessToken || !response.refreshToken) {
       await this.login(credentials);
     } else {

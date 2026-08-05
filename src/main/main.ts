@@ -399,6 +399,7 @@ import {
 import { isLicenseAuthorized, LicenseController } from './license/licenseController';
 import { resolveLicenseQaE2eRuntime } from './license/qaE2eRuntime';
 import { broadcastLicenseState, registerLicenseIpc } from './license/registerLicenseIpc';
+import { resolveLicenseRuntimeConfig } from './license/runtimeConfig';
 import { ElectronSecureSessionStore } from './license/secureSessionStore';
 import { getLogFilePath, getRecentMainLogEntries, initLogger } from './logger';
 import { type AskUserResponse, McpRuntime } from './mcp/mcpRuntime';
@@ -11631,10 +11632,18 @@ if (!gotTheLock) {
     if (restartedMeetingCount > 0) {
       console.log(`[MeetingRoom] paused ${restartedMeetingCount} running meeting(s) after app restart.`);
     }
+    const licenseRuntimeConfig = resolveLicenseRuntimeConfig({
+      env: process.env,
+      isDev,
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+    });
+    if (licenseRuntimeConfig.error) {
+      console.error(`[License] packaged configuration unavailable (reason=${licenseRuntimeConfig.error})`);
+    }
     licenseController = new LicenseController({
-      apiBaseUrl: process.env.LOGICNEST_LICENSE_API_URL
-        ?? (isDev ? 'http://127.0.0.1:8787/api/v1' : undefined),
-      publicKeyPem: process.env.LOGICNEST_LICENSE_PUBLIC_KEY_PEM,
+      apiBaseUrl: licenseRuntimeConfig.config.apiBaseUrl,
+      publicKeyPem: licenseRuntimeConfig.config.publicKeyPem,
       clientVersion: app.getVersion(),
       deviceFingerprint: resolveLicenseQaE2eRuntime({
         env: process.env,

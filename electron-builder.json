@@ -43,6 +43,10 @@
   ],
   "extraResources": [
     {
+      "from": ".license-build/license.json",
+      "to": "config/license.json"
+    },
+    {
       "from": "LICENSE",
       "to": "legal/LICENSE-LobsterAI-MIT.txt"
     },
