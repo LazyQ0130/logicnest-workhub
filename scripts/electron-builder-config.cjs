@@ -93,6 +93,19 @@ for (const platformName of ['mac', 'win', 'linux']) {
   mergeExtraResources(platformName);
 }
 
+// electron-builder 26 models Linux desktop entries as a lazy value. Keep the
+// existing metadata while supplying it through the supported callback shape.
+config.linux = {
+  ...(config.linux || {}),
+  desktop: {
+    entry: () => ({
+      Name: '逻栖工枢',
+      Comment: 'AI-assisted coding and productivity tool',
+      Terminal: 'false',
+    }),
+  },
+};
+
 // Unsigned development builds use an explicit no-op signer so electron-builder
 // does not download its cross-platform signing bundle (which contains macOS
 // symlinks that cannot be extracted on locked-down Windows hosts). This flag is
@@ -100,7 +113,7 @@ for (const platformName of ['mac', 'win', 'linux']) {
 if (process.env.LOGICNEST_UNSIGNED_BUILD === '1') {
   config.win = {
     ...(config.win || {}),
-    sign: './scripts/win-sign-unsigned.cjs',
+    signExecutable: false,
   };
 }
 

@@ -99,7 +99,7 @@ export default defineConfig({
               },
               output: {
                 // Keep CJS format (default), but load via ESM loader.mjs
-                inlineDynamicImports: true,
+                codeSplitting: false,
               },
             },
           },
@@ -165,11 +165,6 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: ['electron', '@larksuite/openclaw-lark-tools', '@larksuite/openclaw-lark'],
-    esbuildOptions: {
-      define: {
-        __VERSION__: JSON.stringify(katexVersion),
-      },
-    },
   },
   clearScreen: false,
 });

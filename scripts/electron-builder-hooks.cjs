@@ -600,10 +600,9 @@ async function afterPack(context) {
     }
   }
 
-  // Windows binaries need no extra handling here: with win.sign configured,
-  // electron-builder routes the app exe, uninstaller and installer through
-  // scripts/win-sign.cjs, and the NSIS target's CopyElevateHelper signs
-  // resources/elevate.exe itself (see app-builder-lib nsisUtil.js).
+  // Windows binaries need no extra handling here. Production signing is
+  // handled by electron-builder; explicit unsigned QA builds disable signing
+  // through the supported win.signExecutable option.
 }
 
 module.exports = {

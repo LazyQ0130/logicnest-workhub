@@ -1,20 +1,3 @@
-diff --git a/node_modules/app-builder-lib/out/targets/nsis/WebInstallerTarget.js b/node_modules/app-builder-lib/out/targets/nsis/WebInstallerTarget.js
-index 9b75baa..e018ea7 100644
---- a/node_modules/app-builder-lib/out/targets/nsis/WebInstallerTarget.js
-+++ b/node_modules/app-builder-lib/out/targets/nsis/WebInstallerTarget.js
-@@ -23,8 +23,11 @@ class WebInstallerTarget extends NsisTarget_1.NsisTarget {
-                 throw new Error("Cannot compute app package download URL");
-             }
-             appPackageUrl = (0, PublishManager_1.computeDownloadUrl)(publishConfigs[0], null, packager);
-+            // Computed URLs point at a directory, so the NSIS template appends the
-+            // package file name. An explicit appPackageUrl is used verbatim, as the
-+            // option documentation states ("it is full URL").
-+            defines.APP_PACKAGE_URL_IS_INCOMPLETE = null;
-         }
--        defines.APP_PACKAGE_URL_IS_INCOMPLETE = null;
-         defines.APP_PACKAGE_URL = appPackageUrl;
-     }
-     get installerFilenamePattern() {
 diff --git a/node_modules/app-builder-lib/templates/nsis/assistedInstaller.nsh b/node_modules/app-builder-lib/templates/nsis/assistedInstaller.nsh
 index b7f4752..e11b58f 100644
 --- a/node_modules/app-builder-lib/templates/nsis/assistedInstaller.nsh
@@ -162,7 +145,7 @@ index f5470bf..c9ebc07 100644
  
    RetryExtract7za:
 diff --git a/node_modules/app-builder-lib/templates/nsis/include/installer.nsh b/node_modules/app-builder-lib/templates/nsis/include/installer.nsh
-index 34e91df..702be81 100644
+index 300ef3d..11f60fa 100644
 --- a/node_modules/app-builder-lib/templates/nsis/include/installer.nsh
 +++ b/node_modules/app-builder-lib/templates/nsis/include/installer.nsh
 @@ -79,7 +79,13 @@
@@ -198,7 +181,7 @@ index 34e91df..702be81 100644
        ${if} $installMode == "all"
          SetShellVarContext all
        ${endif}
-@@ -138,9 +155,18 @@
+@@ -158,9 +175,18 @@
  
    # allow user to define ESTIMATED_SIZE to avoid GetSize call
    !ifdef ESTIMATED_SIZE
@@ -270,7 +253,7 @@ index 8ec0be3..253545c 100644
    StrCpy $packageFile "$PLUGINSDIR\package.7z"
  !macroend
 diff --git a/node_modules/app-builder-lib/templates/nsis/installSection.nsh b/node_modules/app-builder-lib/templates/nsis/installSection.nsh
-index 053772f..57a73d8 100644
+index 053772f..b6ed86a 100644
 --- a/node_modules/app-builder-lib/templates/nsis/installSection.nsh
 +++ b/node_modules/app-builder-lib/templates/nsis/installSection.nsh
 @@ -11,6 +11,20 @@ StrCpy $appExe "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
@@ -335,14 +318,18 @@ index 053772f..57a73d8 100644
 +!endif
 +
  SetOutPath $INSTDIR
-
+ 
  !ifdef UNINSTALLER_ICON
-@@ -66,2 +80,5 @@
+@@ -64,6 +78,9 @@ SetOutPath $INSTDIR
+ !endif
+ 
  !insertmacro installApplicationFiles
 +!ifmacrodef customBeforeRegistryAddInstallInfo
 +  !insertmacro customBeforeRegistryAddInstallInfo
 +!endif
  !insertmacro registryAddInstallInfo
+ !insertmacro addStartMenuLink $keepShortcuts
+ !insertmacro addDesktopLink $keepShortcuts
 @@ -102,9 +119,13 @@ ${endIf}
    !endif
    !insertmacro quitSuccess
@@ -361,10 +348,10 @@ index 053772f..57a73d8 100644
    ${endIf}
  !endif
 diff --git a/node_modules/app-builder-lib/templates/nsis/installer.nsi b/node_modules/app-builder-lib/templates/nsis/installer.nsi
-index 1b88a9d..a52559b 100644
+index 4b1f42e..b5b7c67 100644
 --- a/node_modules/app-builder-lib/templates/nsis/installer.nsi
 +++ b/node_modules/app-builder-lib/templates/nsis/installer.nsi
-@@ -33,8 +33,24 @@ Var oldMenuDirectory
+@@ -40,8 +40,24 @@ Var oldMenuDirectory
    !include "assistedInstaller.nsh"
  !endif
  
