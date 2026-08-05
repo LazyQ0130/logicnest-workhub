@@ -72,7 +72,7 @@ const BUNDLED_EXTENSIONS_TO_KEEP = new Set([
   'ollama', 'openai', 'openrouter', 'qianfan', 'qwen', 'stepfun', 'volcengine',
   'xai', 'xiaomi',
   // --- Channels (managed via entries or third-party replacements) ---
-  'telegram', 'discord', 'feishu', 'qqbot',
+  'feishu', 'qqbot',
   // --- Core features ---
   'browser', 'memory-core', 'lobster', 'llm-task', 'zai',
   // --- Media / voice (bundled defaults, may be used by agents) ---

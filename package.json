@@ -1,9 +1,9 @@
 {
-  "name": "lobsterai",
+  "name": "logicnest-workhub",
+  "description": "逻栖工枢 Windows desktop agent and licensed operations platform",
   "private": true,
   "author": {
-    "name": "LobsterAI",
-    "email": "lobsterai.project@rd.netease.com"
+    "name": "LogicNest WorkHub"
   },
   "license": "MIT",
   "version": "2026.7.31",
@@ -27,11 +27,6 @@
         "version": "2026.6.1"
       },
       {
-        "id": "discord",
-        "npm": "@openclaw/discord",
-        "version": "2026.6.1"
-      },
-      {
         "id": "wecom-openclaw-plugin",
         "npm": "@wecom/wecom-openclaw-plugin",
         "version": "2026.5.25"
@@ -40,29 +35,6 @@
         "id": "openclaw-weixin",
         "npm": "@tencent-weixin/openclaw-weixin",
         "version": "2.4.3"
-      },
-      {
-        "id": "moltbot-popo",
-        "npm": "moltbot-popo",
-        "version": "2.1.13",
-        "registry": "https://npm.nie.netease.com",
-        "optional": true
-      },
-      {
-        "id": "openclaw-nim-channel",
-        "npm": "git+https://github.com/netease-im/openclaw-nim-channel.git#1.1.1",
-        "version": "1.1.1",
-        "optional": true
-      },
-      {
-        "id": "openclaw-netease-bee",
-        "npm": "openclaw-netease-bee",
-        "version": "0.1.3"
-      },
-      {
-        "id": "clawemail-email",
-        "npm": "@clawemail/email",
-        "version": "0.9.12"
       }
     ]
   },
@@ -78,7 +50,30 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",
+    "brand:assets": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/generate-logicnest-brand-assets.ps1",
+    "brand:scan": "node scripts/brand-scan.cjs",
+    "license:install": "npm install --prefix services/license-server",
+    "license:test": "npm test --prefix services/license-server",
+    "license:build": "npm run build --prefix services/license-server",
+    "license:dev:init": "node scripts/init-license-dev.cjs",
+    "license:dev:up": "docker compose --env-file services/license-server/.env -f services/license-server/docker-compose.yml up -d --build",
+    "prelicense:dev:client": "electron-builder install-app-deps",
+    "license:dev:client": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-license-client-dev.ps1",
+    "license:e2e:init": "node scripts/init-license-e2e.cjs",
+    "license:e2e:up": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-license-e2e.ps1",
+    "prelicense:e2e:client": "node scripts/verify-openclaw-im-runtime.cjs --repair",
+    "license:e2e:client": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-license-e2e-client.ps1",
+    "license:e2e:run": "node scripts/run-license-e2e.cjs",
+    "prelicense:e2e:desktop": "electron-builder install-app-deps && node scripts/verify-openclaw-im-runtime.cjs --repair",
+    "license:e2e:desktop": "node scripts/run-license-desktop-e2e.cjs",
+    "license:test:mysql": "node scripts/run-license-mysql-integration.cjs",
+    "license:e2e:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop-license-e2e.ps1",
+    "admin:install": "npm install --prefix services/admin-web",
+    "admin:test": "npm test --prefix services/admin-web",
+    "admin:build": "npm run build --prefix services/admin-web",
+    "admin:smoke": "npm run verify:deployment --prefix services/admin-web --",
     "test": "vitest run",
+    "test:ssrf": "vitest run src/shared/browserWebAccess/constants.test.ts src/main/libs/openclawConfigSync.runtime.test.ts && node scripts/run-openclaw-ssrf-tests.cjs",
     "pretest": "npm rebuild better-sqlite3",
     "test:sqlite-backup:seed": "node tests/sqlite-backup/generate-large-db.cjs",
     "preview": "vite preview",
@@ -89,6 +84,7 @@
     "build:skill:email": "cd SKILLs/imap-smtp-email && npm install --production",
     "build:skills": "npm run build:skill:web-search && npm run build:skill:tech-news && npm run build:skill:email",
     "start:electron": "cross-env NODE_ENV=development ELECTRON_START_URL=http://localhost:5175 electron .",
+    "preelectron:dev": "node scripts/verify-openclaw-im-runtime.cjs --repair",
     "electron:dev": "rimraf dist-electron && npm run compile:electron && concurrently \"vite --port 5175\" \"wait-on -v -t 120000 -d 20000 http://localhost:5175 dist-electron/.electron-ready && npm run start:electron\"",
     "electron:dev:openclaw": "npm run openclaw:runtime:host && npm run electron:dev",
     "postinstall": "patch-package && electron-builder install-app-deps",
@@ -99,8 +95,8 @@
     "dist:mac:x64": "npm run build && npm run compile:electron && npm run build:skills && npm run openclaw:runtime:mac-x64 && electron-builder --mac --x64 --config scripts/electron-builder-config.cjs",
     "dist:mac:arm64": "npm run build && npm run compile:electron && npm run build:skills && npm run openclaw:runtime:mac-arm64 && electron-builder --mac --arm64 --config scripts/electron-builder-config.cjs",
     "dist:mac:universal": "npm run build && npm run compile:electron && npm run build:skills && electron-builder --mac --universal --config scripts/electron-builder-config.cjs",
-    "predist:win": "npm run openclaw:runtime:win-x64",
-    "dist:win": "npm run setup:python-runtime && npm run build && npm run compile:electron && npm run build:skills && electron-builder --win --x64 --config scripts/electron-builder-config.cjs",
+    "predist:win": "npm run brand:scan",
+    "dist:win": "npm run build && npm run compile:electron && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false LOGICNEST_UNSIGNED_BUILD=1 electron-builder --win --x64 --config scripts/electron-builder-config.cjs",
     "dist:win:channel": "node scripts/dist-win-channel.cjs",
     "dist:win:web": "node scripts/dist-win-web.cjs",
     "predist:linux": "npm run openclaw:runtime:linux-x64",
@@ -164,7 +160,6 @@
     "katex": "^0.16.21",
     "lottie-react": "^2.4.1",
     "mermaid": "^10.9.5",
-    "nim-web-sdk-ng": "10.9.77-alpha.4",
     "npm": "^11.11.0",
     "pdfjs-dist": "^4.10.38",
     "pptx-preview": "^1.0.7",
@@ -217,6 +212,7 @@
     "eslint-plugin-simple-import-sort": "^12.1.1",
     "globals": "^17.4.0",
     "husky": "^9.1.7",
+    "jsdom": "^26.1.0",
     "patch-package": "^8.0.1",
     "postcss": "^8.4.35",
     "prettier": "^3.8.1",

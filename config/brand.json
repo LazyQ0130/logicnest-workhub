@@ -1,0 +1,61 @@
+{
+  "nameZh": "逻栖工枢",
+  "nameEn": "LogicNest WorkHub",
+  "displayName": "逻栖工枢",
+  "version": "2026.7.31",
+  "slug": "logicnest-workhub",
+  "appId": "com.logicnest.workhub",
+  "scheme": "logicnest",
+  "executableName": "LogicNestWorkHub",
+  "userDataDirectory": "逻栖工枢",
+  "databaseFilename": "logicnest-workhub.sqlite",
+  "mainAgentNameZh": "工作中枢",
+  "mainAgentNameEn": "Work Hub",
+  "exportFormatType": "logicnest-workhub.providers",
+  "contact": {
+    "email": null
+  },
+  "copyright": {
+    "holderZh": "逻栖工枢",
+    "holderEn": "LogicNest WorkHub"
+  },
+  "documents": {
+    "userGuide": {
+      "labelZh": "使用与激活指南",
+      "labelEn": "Usage and Activation Guide",
+      "document": "user-manual"
+    },
+    "security": {
+      "labelZh": "安全审计说明",
+      "labelEn": "Security Audit Notes",
+      "document": "security"
+    },
+    "serviceTerms": null
+  },
+  "colors": {
+    "navy": "#171717",
+    "navyRaised": "#202020",
+    "cyan": "#52525B",
+    "cyanStrong": "#3F3F46",
+    "gold": "#A16207"
+  },
+  "features": {
+    "analytics": false,
+    "officialUpdates": false,
+    "remoteExpertKits": false,
+    "unauditedImChannels": false
+  },
+  "appearance": {
+    "visibleThemeIds": [
+      "classic-light",
+      "classic-dark",
+      "paper"
+    ]
+  },
+  "assets": {
+    "sourceLogo": "assets/brand/logicnest-logo-reference.jpg",
+    "rendererLogo": "public/logo.png",
+    "windowsIcon": "build/icons/win/icon.ico",
+    "trayIcon": "resources/tray/tray-icon.ico"
+  }
+}

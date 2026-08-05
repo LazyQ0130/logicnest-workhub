@@ -10,7 +10,16 @@ import {
   AppUpdateStatus,
   isManualDownloadUrl,
 } from '../shared/appUpdate/constants';
+import { BRAND } from '../shared/brand';
+import { LicensePhase, type LicenseState } from '../shared/license';
 import { ProviderAuthType, ProviderName, ProviderRegistry } from '../shared/providers';
+import { LicenseAppView, resolveLicenseAppView } from './components/auth/licenseAppView';
+import LogicNestLicenseGate from './components/auth/LogicNestLicenseGate';
+import {
+  LogicNestLockedShell,
+  LogicNestRestrictedView,
+  LogicNestWorkspaceStarting,
+} from './components/auth/LogicNestLockedShell';
 import { CoworkView } from './components/cowork';
 import { CoworkShortcutDirection, CoworkUiEvent } from './components/cowork/constants';
 import CoworkPermissionModal from './components/cowork/CoworkPermissionModal';
@@ -19,7 +28,7 @@ import EngineFailureOverlay from './components/cowork/EngineFailureOverlay';
 import EngineStartupOverlay from './components/cowork/EngineStartupOverlay';
 import KitsView from './components/kits/KitsView';
 import { McpView } from './components/mcp';
-import PrivacyDialog from './components/PrivacyDialog';
+import MeetingRoomsView from './components/meetingRooms/MeetingRoomsView';
 import { ScheduledTasksView } from './components/scheduledTasks';
 import Settings, { type SettingsOpenOptions } from './components/Settings';
 import Sidebar from './components/Sidebar';
@@ -38,18 +47,15 @@ import {
   shouldBlockAppInteractionForUpdate,
 } from './components/update/appUpdateInteractionState';
 import AppUpdateModal from './components/update/AppUpdateModal';
-import WelcomeDialog from './components/WelcomeDialog';
 import WindowsAppTitleBar from './components/window/WindowsAppTitleBar';
 import { defaultConfig, getProviderDisplayName, ShortcutAction } from './config';
+import { SidebarDestination, type SidebarDestination as SidebarDestinationType } from './config/brandUi';
 import { SkinProvider } from './providers/SkinProvider';
 import type { ApiConfig } from './services/api';
 import { apiService } from './services/api';
-import { authService } from './services/auth';
 import { configService } from './services/config';
 import { coworkService } from './services/cowork';
-import { isTestModeEnabled } from './services/endpoints';
 import { i18nService } from './services/i18n';
-import { LogReporterAction, reportYdAnalyzer } from './services/logReporter';
 import { scheduledTaskService } from './services/scheduledTask';
 import { matchesShortcut } from './services/shortcuts';
 import { themeService } from './services/theme';
@@ -106,6 +112,9 @@ const SETTINGS_TAB_SHORTCUT_ACTIONS: Array<{
 const INIT_STEP_TIMEOUT_MS_WINDOWS = 24_000;
 const INIT_STEP_TIMEOUT_MS_DEFAULT = 16_000;
 
+const isLicenseAuthorized = (state: LicenseState): boolean =>
+  state.phase === LicensePhase.Authorized || state.phase === LicensePhase.OfflineGrace;
+
 const logAppUpdateRendererLifecycle = (
   message: string,
   level: 'debug' | 'warn' = 'debug',
@@ -125,8 +134,20 @@ const logAppUpdateRendererLifecycle = (
 const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsOptions, setSettingsOptions] = useState<SettingsOpenOptions & { requestId: number }>({ requestId: 0 });
-  const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites'>('cowork');
-  const [isInitialized, setIsInitialized] = useState(false);
+  const [mainView, setMainView] = useState<'cowork' | 'skills' | 'meetingRooms' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites'>('cowork');
+  const [activeSidebarDestination, setActiveSidebarDestination] =
+    useState<SidebarDestinationType>(SidebarDestination.WorkHub);
+  const [isBaseInitialized, setIsBaseInitialized] = useState(false);
+  const [isCoreInitialized, setIsCoreInitialized] = useState(false);
+  const [licenseState, setLicenseState] = useState<LicenseState>({
+    phase: LicensePhase.Loading,
+    user: null,
+    membership: { status: 'none' },
+    device: null,
+    offlineUntil: null,
+    lastServerTime: null,
+    heartbeatAfterSeconds: 300,
+  });
   const [initError, setInitError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [, forceLanguageRefresh] = useState(0);
@@ -142,10 +163,9 @@ const App: React.FC = () => {
     errorMessage: null,
   });
   const [showUpdateModal, setShowUpdateModal] = useState(false);
-  const [isUpdateCardExpanded, setIsUpdateCardExpanded] = useState(false);
+  const [, setIsUpdateCardExpanded] = useState(false);
   const [isUserInitiatedUpdateFlowActive, setIsUserInitiatedUpdateFlowActive] = useState(false);
   const [privacyAgreed, setPrivacyAgreed] = useState<boolean | null>(null);
-  const [showWelcome, setShowWelcome] = useState(false);
   const [enterpriseConfig, setEnterpriseConfig] = useState<{
     ui?: Record<string, 'hide' | 'disable' | 'readonly'>;
     disableUpdate?: boolean;
@@ -153,7 +173,6 @@ const App: React.FC = () => {
   const toastTimerRef = useRef<number | null>(null);
   const askAiFocusTimerRef = useRef<number | null>(null);
   const hasInitialized = useRef(false);
-  const hasReportedAppStartedRef = useRef(false);
   const previousUpdateStatusRef = useRef<AppUpdateRuntimeState['status']>(AppUpdateStatus.Idle);
   const shouldInstallReadyUpdateRef = useRef(false);
   const isUserInitiatedUpdateFlowActiveRef = useRef(false);
@@ -235,9 +254,16 @@ const App: React.FC = () => {
         await waitWithTimeout(i18nService.initialize(), initTimeoutMs, 'i18nService.initialize');
         mark('i18nService.initialize done');
 
-        mark('authService.init begin');
-        await authService.init();
-        mark('authService.init done');
+        mark('license.getState begin');
+        const initialLicenseState = await waitWithTimeout(window.electron.license.getState(), initTimeoutMs, 'license.getState');
+        setLicenseState(initialLicenseState);
+        setIsBaseInitialized(true);
+        mark(`license.getState done phase=${initialLicenseState.phase}`);
+        if (initialLicenseState.phase !== LicensePhase.Authorized && initialLicenseState.phase !== LicensePhase.OfflineGrace) {
+          setPrivacyAgreed(true);
+          mark('license gate ready');
+          return;
+        }
 
         const config = await configService.getConfig();
         applyTypographyPreferences(config);
@@ -279,21 +305,13 @@ const App: React.FC = () => {
         }
         mark('model resolution done');
 
-        const agreed = await window.electron.store.get('privacy_agreed');
-        setPrivacyAgreed(agreed === true);
+        // LogicNest does not use the upstream hosted privacy dialog. Product
+        // telemetry and official update checks are disabled by default.
+        setPrivacyAgreed(true);
         mark('privacy check done');
 
-        setIsInitialized(true);
+        setIsCoreInitialized(true);
         mark('shell ready');
-        if (!hasReportedAppStartedRef.current) {
-          hasReportedAppStartedRef.current = true;
-          void reportYdAnalyzer({
-            action: LogReporterAction.AppStarted,
-            providerModelCount: providerModels.length,
-            hasLoggedInUser: !!store.getState().auth.user?.yid,
-          });
-        }
-
         void waitWithTimeout(scheduledTaskService.init(), 5000, 'scheduledTaskService.init').catch((error) => {
           console.error('[App] initializeApp: scheduledTaskService.init failed:', error);
         });
@@ -305,12 +323,14 @@ const App: React.FC = () => {
         console.error(`[App] ${detail}`);
         try { window.electron?.log?.fromRenderer?.('error', 'App', detail); } catch { /* best-effort */ }
         setInitError(i18nService.t('initializationError'));
-        setIsInitialized(true);
+        setIsBaseInitialized(true);
       }
     };
 
     void initializeApp();
   }, [dispatch, waitWithTimeout]);
+
+  useEffect(() => window.electron.license.onStateChanged(setLicenseState), []);
 
   useEffect(() => {
     const unsubscribe = i18nService.subscribe(() => {
@@ -321,14 +341,9 @@ const App: React.FC = () => {
     };
   }, []);
 
-  useEffect(() => {
-    if (authUser) {
-      void authService.fetchProfileSummary();
-    }
-  }, [authUser]);
-
   // Listen for Copilot token auto-refresh events from the main process
   useEffect(() => {
+    if (!isCoreInitialized) return;
     const removeListener = window.electron.githubCopilot.onTokenUpdated(({ token, baseUrl }) => {
       console.log('[App] received Copilot token update from main process');
       apiService.setProviderRuntimeCredential(ProviderName.Copilot, {
@@ -337,10 +352,11 @@ const App: React.FC = () => {
       });
     });
     return removeListener;
-  }, []);
+  }, [isCoreInitialized]);
 
   // Network status monitoring
   useEffect(() => {
+    if (!isCoreInitialized) return;
     const handleOnline = () => {
       console.log('[Renderer] Network online');
       window.electron.networkStatus.send('online');
@@ -358,10 +374,10 @@ const App: React.FC = () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [isCoreInitialized]);
 
   useEffect(() => {
-    if (!isInitialized || !defaultSelectedModel?.id) return;
+    if (!isCoreInitialized || !isLicenseAuthorized(licenseState) || !defaultSelectedModel?.id) return;
     const config = configService.getConfig();
     if (
       config.model.defaultModel === defaultSelectedModel.id
@@ -376,7 +392,7 @@ const App: React.FC = () => {
         defaultModelProvider: defaultSelectedModel.providerKey,
       },
     });
-  }, [isInitialized, defaultSelectedModel?.id, defaultSelectedModel?.providerKey]);
+  }, [isCoreInitialized, licenseState, defaultSelectedModel?.id, defaultSelectedModel?.providerKey]);
 
   const handleShowSettings = useCallback((options?: SettingsOpenOptions) => {
     setSettingsOptions((current) => ({
@@ -391,6 +407,7 @@ const App: React.FC = () => {
 
   const handleShowSkills = useCallback(() => {
     setMainView('skills');
+    setActiveSidebarDestination(SidebarDestination.Capabilities);
   }, []);
 
   const handleShowCowork = useCallback(() => {
@@ -399,10 +416,17 @@ const App: React.FC = () => {
 
   const handleShowScheduledTasks = useCallback(() => {
     setMainView('scheduledTasks');
+    setActiveSidebarDestination(SidebarDestination.Automations);
+  }, []);
+
+  const handleShowMeetingRooms = useCallback(() => {
+    setMainView('meetingRooms');
+    setActiveSidebarDestination(SidebarDestination.MeetingRooms);
   }, []);
 
   const handleShowMcp = useCallback(() => {
     setMainView('mcp');
+    setActiveSidebarDestination(SidebarDestination.Connections);
   }, []);
 
   const handleShowSites = useCallback(() => {
@@ -411,6 +435,7 @@ const App: React.FC = () => {
 
   const handleShowKits = useCallback(() => {
     setMainView('kits');
+    setActiveSidebarDestination(SidebarDestination.Solutions);
   }, []);
 
   const openHomeWithKit = useCallback((kitId: string, text?: string) => {
@@ -428,6 +453,7 @@ const App: React.FC = () => {
     }
     dispatch(setDraftKitIds({ draftKey: '__home__', kitIds: [kitId] }));
     setMainView('cowork');
+    setActiveSidebarDestination(SidebarDestination.WorkHub);
     window.setTimeout(() => {
       window.dispatchEvent(new CustomEvent(CoworkUiEvent.FocusInput, {
         // Without text, keep any existing home draft and just focus with the kit selected
@@ -453,13 +479,6 @@ const App: React.FC = () => {
     } catch {
       // Logging should never block sidebar interactions.
     }
-    void reportYdAnalyzer({
-      action: LogReporterAction.SidebarAction,
-      source: 'home_sidebar',
-      actionType: isSidebarCollapsed ? 'expand_sidebar' : 'collapse_sidebar',
-      activeView: mainView,
-      isCollapsed: isSidebarCollapsed,
-    });
     setIsSidebarCollapsed((prev) => !prev);
   }, [isSidebarCollapsed, mainView]);
 
@@ -473,6 +492,7 @@ const App: React.FC = () => {
       mode: CoworkCollaborationMode.Default,
     }));
     setMainView('cowork');
+    setActiveSidebarDestination(SidebarDestination.WorkHub);
     window.setTimeout(() => {
       window.dispatchEvent(new CustomEvent(CoworkUiEvent.FocusInput, {
         detail: { clear: shouldClearInput, resetCollaborationMode: true },
@@ -489,6 +509,7 @@ const App: React.FC = () => {
       mode: CoworkCollaborationMode.Default,
     }));
     setMainView('cowork');
+    setActiveSidebarDestination(SidebarDestination.WorkHub);
   }, [dispatch]);
 
   const handleCreateSiteByChat = useCallback((prompt: string) => {
@@ -504,12 +525,23 @@ const App: React.FC = () => {
     }));
     dispatch(setDraftPrompt({ sessionId: '__home__', draft: prompt }));
     setMainView('cowork');
+    setActiveSidebarDestination(SidebarDestination.WorkHub);
     window.setTimeout(() => {
       window.dispatchEvent(new CustomEvent(CoworkUiEvent.FocusInput, {
         detail: { clear: false, resetCollaborationMode: true, text: prompt },
       }));
     }, 0);
   }, [dispatch]);
+
+  useEffect(() => {
+    if (
+      mainView === 'cowork'
+      && currentSessionId
+      && activeSidebarDestination !== SidebarDestination.Assistants
+    ) {
+      setActiveSidebarDestination(SidebarDestination.TaskHistory);
+    }
+  }, [activeSidebarDestination, currentSessionId, mainView]);
 
   const showToast = useCallback((message: string) => {
     setToastMessage(message);
@@ -540,6 +572,10 @@ const App: React.FC = () => {
 
   useEffect(() => {
     let mounted = true;
+
+    if (!isCoreInitialized || !isLicenseAuthorized(licenseState) || !BRAND.features.officialUpdates) {
+      return () => { mounted = false; };
+    }
 
     const loadInitialUpdateState = async () => {
       try {
@@ -617,13 +653,15 @@ const App: React.FC = () => {
       mounted = false;
       unsubscribe();
     };
-  }, [showToast, stopUserInitiatedUpdateFlow]);
+  }, [isCoreInitialized, licenseState, showToast, stopUserInitiatedUpdateFlow]);
 
-  const handleShowLogin = useCallback(() => {
-    showToast(i18nService.t('featureInDevelopment'));
-  }, [showToast]);
+  const handleLicenseLogout = useCallback(async (): Promise<void> => {
+    const nextState = await window.electron.license.logout();
+    setLicenseState(nextState);
+  }, []);
 
   const runUpdateCheck = useCallback(async () => {
+    if (!BRAND.features.officialUpdates) return;
     try {
       const result = await window.electron.appUpdate.checkNow({ userId: authUser?.yid });
       setAppUpdateState(result.state);
@@ -751,26 +789,6 @@ const App: React.FC = () => {
     await handleConfirmUpdate();
   }, [handleConfirmUpdate]);
 
-  const handlePrivacyAccept = useCallback(async () => {
-    await window.electron.store.set('privacy_agreed', true);
-    setPrivacyAgreed(true);
-    setShowWelcome(true);
-  }, []);
-
-  const handlePrivacyReject = useCallback(() => {
-    // 立刻隐藏窗口，让用户感觉立即关闭
-    window.electron.window.close();
-  }, []);
-
-  const handleWelcomeLogin = useCallback(async () => {
-    setShowWelcome(false);
-    await authService.login();
-  }, []);
-  const handleWelcomeCustomModel = useCallback(() => {
-    setShowWelcome(false);
-    handleShowSettings({ initialTab: 'model' });
-  }, [handleShowSettings]);
-
   const handlePermissionResponse = useCallback(async (result: CoworkPermissionResult) => {
     if (!pendingPermission) return;
     await coworkService.respondToPermission(pendingPermission.requestId, result);
@@ -850,6 +868,7 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
+    if (!isCoreInitialized) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.repeat || isShortcutInputActive() || isTextEditingActive()) return;
 
@@ -905,6 +924,7 @@ const App: React.FC = () => {
       if (matchesAction(ShortcutAction.FocusPrompt)) {
         event.preventDefault();
         setMainView('cowork');
+        setActiveSidebarDestination(currentSessionId ? SidebarDestination.TaskHistory : SidebarDestination.WorkHub);
         window.setTimeout(() => {
           window.dispatchEvent(new CustomEvent(CoworkUiEvent.FocusInput, {
             detail: { clear: false },
@@ -932,6 +952,7 @@ const App: React.FC = () => {
       if (matchesAction(ShortcutAction.ToggleArtifacts)) {
         event.preventDefault();
         setMainView('cowork');
+        setActiveSidebarDestination(currentSessionId ? SidebarDestination.TaskHistory : SidebarDestination.WorkHub);
         window.setTimeout(() => {
           window.dispatchEvent(new CustomEvent(CoworkUiEvent.ShortcutToggleArtifacts));
         }, 0);
@@ -941,6 +962,7 @@ const App: React.FC = () => {
       if (matchesAction(ShortcutAction.PreviousAgent)) {
         event.preventDefault();
         setMainView('cowork');
+        setActiveSidebarDestination(SidebarDestination.Assistants);
         setIsSidebarCollapsed(false);
         window.dispatchEvent(new CustomEvent(CoworkUiEvent.ShortcutSwitchAgent, {
           detail: { direction: CoworkShortcutDirection.Previous },
@@ -951,6 +973,7 @@ const App: React.FC = () => {
       if (matchesAction(ShortcutAction.NextAgent)) {
         event.preventDefault();
         setMainView('cowork');
+        setActiveSidebarDestination(SidebarDestination.Assistants);
         setIsSidebarCollapsed(false);
         window.dispatchEvent(new CustomEvent(CoworkUiEvent.ShortcutSwitchAgent, {
           detail: { direction: CoworkShortcutDirection.Next },
@@ -961,6 +984,7 @@ const App: React.FC = () => {
       if (matchesAction(ShortcutAction.ShowCurrentAgentTasks)) {
         event.preventDefault();
         setMainView('cowork');
+        setActiveSidebarDestination(SidebarDestination.TaskHistory);
         setIsSidebarCollapsed(false);
         window.dispatchEvent(new CustomEvent(CoworkUiEvent.ShortcutShowCurrentAgentTasks));
         return;
@@ -970,6 +994,7 @@ const App: React.FC = () => {
       if (taskSlotIndex >= 0) {
         event.preventDefault();
         setMainView('cowork');
+        setActiveSidebarDestination(SidebarDestination.TaskHistory);
         setIsSidebarCollapsed(false);
         window.dispatchEvent(new CustomEvent(CoworkUiEvent.ShortcutOpenAgentTaskSlot, {
           detail: { slot: taskSlotIndex + 1 },
@@ -979,7 +1004,7 @@ const App: React.FC = () => {
 
       if (matchesAction(ShortcutAction.OpenCowork)) {
         event.preventDefault();
-        handleShowCowork();
+        handleNewChat();
         return;
       }
 
@@ -1024,6 +1049,7 @@ const App: React.FC = () => {
     isPermissionModalOpen,
     showSettings,
     showUpdateModal,
+    isCoreInitialized,
   ]);
 
   useEffect(() => {
@@ -1046,6 +1072,7 @@ const App: React.FC = () => {
 
   // Listen for ask-ai events: close settings, open a new chat, and pre-fill its input.
   useEffect(() => {
+    if (!isCoreInitialized) return;
     const handler = (e: Event) => {
       const text = (e as CustomEvent<string>).detail;
       if (typeof text !== 'string' || !text.trim()) {
@@ -1098,45 +1125,51 @@ const App: React.FC = () => {
         askAiFocusTimerRef.current = null;
       }
     };
-  }, [dispatch]);
+  }, [dispatch, isCoreInitialized]);
 
   // 监听托盘菜单打开设置的 IPC 事件
   useEffect(() => {
+    if (!isCoreInitialized) return;
     const unsubscribe = window.electron.ipcRenderer.on('app:openSettings', () => {
       handleShowSettings();
     });
     return unsubscribe;
-  }, [handleShowSettings]);
+  }, [handleShowSettings, isCoreInitialized]);
 
   // 监听托盘菜单新建任务的 IPC 事件
   useEffect(() => {
+    if (!isCoreInitialized) return;
     const unsubscribe = window.electron.ipcRenderer.on('app:newTask', () => {
       handleNewChat();
     });
     return unsubscribe;
-  }, [handleNewChat]);
+  }, [handleNewChat, isCoreInitialized]);
 
   useEffect(() => {
+    if (!isCoreInitialized) return;
     const unsubscribe = window.electron.cowork.onOpenSessionFromNotification?.(({ sessionId }) => {
       setShowSettings(false);
       setMainView('cowork');
+      setActiveSidebarDestination(SidebarDestination.WorkHub);
+      setActiveSidebarDestination(SidebarDestination.TaskHistory);
       void coworkService.loadSession(sessionId);
     });
     void window.electron.cowork.notifyOpenSessionFromNotificationReady?.();
     return unsubscribe;
-  }, []);
+  }, [isCoreInitialized]);
 
   // Tell the main process which session is currently visible so desktop
   // notifications for that session can be suppressed and cleared.
   useEffect(() => {
+    if (!isCoreInitialized) return;
     const visibleSessionId = mainView === 'cowork' && !showSettings ? currentSessionId ?? null : null;
     void window.electron.cowork.setActiveSession?.(visibleSessionId)?.catch?.((error: unknown) => {
       console.debug('[App] failed to report active session:', error);
     });
-  }, [mainView, showSettings, currentSessionId]);
+  }, [isCoreInitialized, mainView, showSettings, currentSessionId]);
 
   useEffect(() => {
-    if (!isInitialized) return;
+    if (!isCoreInitialized || !isLicenseAuthorized(licenseState) || !BRAND.features.officialUpdates) return;
 
     // Enterprise mode: completely skip update detection
     if (enterpriseConfig?.disableUpdate) return;
@@ -1174,7 +1207,7 @@ const App: React.FC = () => {
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [isInitialized, runUpdateCheck, enterpriseConfig]);
+  }, [isCoreInitialized, licenseState, runUpdateCheck, enterpriseConfig]);
 
   // 根据场景选择使用哪个权限组件。最小化时保持组件挂载（仅视觉隐藏），
   // 避免重新展开后丢失用户已选择/已输入的内容；key 按 requestId 隔离不同请求的状态。
@@ -1236,7 +1269,14 @@ const App: React.FC = () => {
       onExpandedChange={setIsUpdateCardExpanded}
     />
   ) : null;
-  const canUseWindowsTopBarActions = isInitialized && !initError && !isUpdateInteractionBlocked;
+  const licenseAppView = resolveLicenseAppView({
+    baseInitialized: isBaseInitialized,
+    coreInitialized: isCoreInitialized,
+    licensePhase: licenseState.phase,
+    hasInitializationError: Boolean(initError),
+  });
+  const canUseWindowsTopBarActions = licenseAppView === LicenseAppView.Authorized
+    && !isUpdateInteractionBlocked;
   const canUseWindowsCollapsedTopBarActions = canUseWindowsTopBarActions && isSidebarCollapsed;
   const collapsedHeaderUpdateBadge = isSidebarCollapsed && !isWindows ? updateBadge : null;
   const windowsStandaloneTitleBar = isWindows ? (
@@ -1252,7 +1292,7 @@ const App: React.FC = () => {
     />
   ) : null;
 
-  if (!isInitialized) {
+  if (licenseAppView === LicenseAppView.Loading) {
     // index.html's static splash shows the same startup page until React
     // mounts; rendering EngineStartupOverlay from the first frame keeps the
     // whole startup on one continuous screen with no visual handoff.
@@ -1265,7 +1305,7 @@ const App: React.FC = () => {
     );
   }
 
-  if (initError) {
+  if (licenseAppView === LicenseAppView.InitializationError) {
     return (
       <div className="h-screen overflow-hidden flex flex-col">
         {windowsStandaloneTitleBar}
@@ -1294,6 +1334,7 @@ const App: React.FC = () => {
             <SkinProvider>
               <Settings
                 onClose={handleCloseSettings}
+                licenseUserId={licenseState.user?.uid}
                 initialTab={settingsOptions.initialTab}
                 initialTabRequestId={settingsOptions.requestId}
                 notice={settingsOptions.notice}
@@ -1305,6 +1346,22 @@ const App: React.FC = () => {
         </div>
       </div>
     );
+  }
+
+  if (licenseAppView === LicenseAppView.SignedOut) {
+    return <LogicNestLicenseGate state={licenseState} onState={setLicenseState} />;
+  }
+
+  if (licenseAppView === LicenseAppView.ActivationRequired) {
+    return <LogicNestLockedShell state={licenseState} onState={setLicenseState} />;
+  }
+
+  if (licenseAppView === LicenseAppView.Restricted) {
+    return <LogicNestRestrictedView state={licenseState} onState={setLicenseState} />;
+  }
+
+  if (licenseAppView === LicenseAppView.WorkspaceStarting) {
+    return <LogicNestWorkspaceStarting />;
   }
 
   return (
@@ -1326,12 +1383,16 @@ const App: React.FC = () => {
         aria-busy={isUpdateInteractionBlocked}
       >
         <Sidebar
-          onShowLogin={handleShowLogin}
           onShowSettings={handleShowSettings}
+          licenseState={licenseState}
+          onLicenseLogout={handleLicenseLogout}
           activeView={mainView}
+          activeDestination={activeSidebarDestination}
+          onDestinationChange={setActiveSidebarDestination}
           onShowSkills={handleShowSkills}
           onShowCowork={handleShowCowork}
           onShowScheduledTasks={handleShowScheduledTasks}
+          onShowMeetingRooms={handleShowMeetingRooms}
           onShowKits={handleShowKits}
           onShowMcp={handleShowMcp}
           onShowSites={handleShowSites}
@@ -1340,9 +1401,8 @@ const App: React.FC = () => {
           onToggleCollapse={handleToggleSidebar}
           onWidthChange={setSidebarWidth}
           updateNotice={!isSidebarCollapsed && !isUpdateInteractionBlocked ? updateCard : null}
-          hideAdBanner={isUpdateCardExpanded}
-          hideLogin={enterpriseConfig?.ui?.login === 'hide'}
-          hideSites={!isTestModeEnabled() || enterpriseConfig?.ui?.sites === 'hide'}
+          hideAdBanner
+          hideSites
         />
         <div className={`flex-1 min-w-0 transition-[padding] duration-200 ease-out ${isSidebarCollapsed ? 'pl-1.5' : ''}`}>
           <div
@@ -1363,6 +1423,8 @@ const App: React.FC = () => {
                 updateBadge={collapsedHeaderUpdateBadge}
                 readOnly={enterpriseConfig?.ui?.skills === 'readonly'}
               />
+            ) : mainView === 'meetingRooms' ? (
+              <MeetingRoomsView />
             ) : mainView === 'scheduledTasks' ? (
               <ScheduledTasksView
                 isSidebarCollapsed={isSidebarCollapsed}
@@ -1397,7 +1459,7 @@ const App: React.FC = () => {
               />
             ) : (
               <CoworkView
-                onRequestAppSettings={privacyAgreed === true && !showWelcome ? handleShowSettings : undefined}
+                onRequestAppSettings={privacyAgreed === true ? handleShowSettings : undefined}
                 onShowSkills={handleShowSkills}
                 onShowKits={handleShowKits}
                 isSidebarCollapsed={isSidebarCollapsed}
@@ -1422,14 +1484,15 @@ const App: React.FC = () => {
       </div>
 
       <EngineFailureOverlay
-        onRequestAppSettings={privacyAgreed === true && !showWelcome ? handleShowSettings : undefined}
-        suspended={showSettings || showUpdateModal || isPermissionModalOpen || privacyAgreed === false || showWelcome}
+        onRequestAppSettings={privacyAgreed === true ? handleShowSettings : undefined}
+        suspended={showSettings || showUpdateModal || isPermissionModalOpen || privacyAgreed === false}
       />
 
       {/* 设置窗口显示在所有主内容之上，但不影响主界面的交互 */}
       {showSettings && (
         <Settings
           onClose={handleCloseSettings}
+          licenseUserId={licenseState.user?.uid}
           onStartAiSkin={handleStartAiSkinFromSettings}
           initialTab={settingsOptions.initialTab}
           initialTabRequestId={settingsOptions.requestId}
@@ -1452,18 +1515,6 @@ const App: React.FC = () => {
         />
       )}
       {permissionModal}
-      {privacyAgreed === false && (
-        <PrivacyDialog
-          onAccept={handlePrivacyAccept}
-          onReject={handlePrivacyReject}
-        />
-      )}
-      {showWelcome && (
-        <WelcomeDialog
-          onLogin={handleWelcomeLogin}
-          onCustomModel={handleWelcomeCustomModel}
-        />
-      )}
       </SkinPresentationScope>
     </SkinProvider>
   );

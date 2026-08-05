@@ -162,7 +162,7 @@ test('marks anonymous events when no user is logged in', () => {
   expect(result.searchParams.get('is_logged_in')).toBe('false');
 });
 
-test('reports an event through the Electron API bridge', async () => {
+test('does not report events through the Electron API bridge', async () => {
   const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
   vi.stubGlobal('window', {
     electron: {
@@ -186,20 +186,9 @@ test('reports an event through the Electron API bridge', async () => {
   await expect(reportYdAnalyzer({
     action: LogReporterAction.PlanModeEnabled,
     entry: LogReporterEntry.PromptToolsMenu,
-  })).resolves.toBe(true);
+  })).resolves.toBe(false);
 
-  expect(fetchMock).toHaveBeenCalledOnce();
-  const request = fetchMock.mock.calls[0][0];
-  const requestUrl = new URL(request.url);
-  expect(request.method).toBe('GET');
-  expect(requestUrl.searchParams.get('action')).toBe('lobsterai_plan_mode_enabled');
-  expect(requestUrl.searchParams.get('entry')).toBe('prompt_tools_menu');
-  expect(requestUrl.searchParams.get('app_version')).toBe('2026.6.18');
-  expect(requestUrl.searchParams.get('os_platform')).toBe('darwin');
-  expect(requestUrl.searchParams.get('os_arch')).toBe('arm64');
-  expect(requestUrl.searchParams.get('uuid')).toBe('installation-uuid');
-  expect(requestUrl.searchParams.get('firstKeyfrom')).toBe('bilibili');
-  expect(requestUrl.searchParams.get('latestKeyfrom')).toBe('partner_a');
+  expect(fetchMock).not.toHaveBeenCalled();
 });
 
 test('returns false when the event request is rejected', async () => {

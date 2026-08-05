@@ -61,8 +61,12 @@ const imSlice = createSlice({
   name: 'im',
   initialState,
   reducers: {
-    setConfig: (state, action: PayloadAction<IMGatewayConfig>) => {
-      state.config = action.payload;
+    setConfig: (state, action: PayloadAction<Partial<IMGatewayConfig>>) => {
+      // The public IPC intentionally returns only active platforms. Keep
+      // legacy defaults internally until the remaining compatibility-only
+      // reducers and editor branches are removed, otherwise entering IM
+      // Settings can dereference an omitted legacy key and blank the page.
+      state.config = { ...DEFAULT_IM_CONFIG, ...action.payload };
     },
     /** @deprecated Use setDingTalkInstanceConfig instead */
     setDingTalkConfig: (state, action: PayloadAction<Partial<DingTalkOpenClawConfig>>) => {
@@ -293,8 +297,8 @@ const imSlice = createSlice({
     setIMSettings: (state, action: PayloadAction<Partial<IMSettings>>) => {
       state.config.settings = { ...state.config.settings, ...action.payload };
     },
-    setStatus: (state, action: PayloadAction<IMGatewayStatus>) => {
-      state.status = action.payload;
+    setStatus: (state, action: PayloadAction<Partial<IMGatewayStatus>>) => {
+      state.status = { ...DEFAULT_IM_STATUS, ...action.payload };
     },
     setLoading: (state, action: PayloadAction<boolean>) => {
       state.isLoading = action.payload;

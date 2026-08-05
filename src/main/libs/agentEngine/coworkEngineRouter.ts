@@ -277,6 +277,21 @@ export class CoworkEngineRouter extends EventEmitter implements CoworkRuntime {
     runtime.on('sessionStopped', (sessionId) => {
       this.emit('sessionStopped', sessionId);
     });
+
+    runtime.on('runStarted', (sessionId, runId, runPolicy, meetingContext) => {
+      this.sessionEngine.set(sessionId, engine);
+      this.emit('runStarted', sessionId, runId, runPolicy, meetingContext);
+    });
+
+    runtime.on('meetingRunStream', (sessionId, runId, content, meetingContext) => {
+      this.sessionEngine.set(sessionId, engine);
+      this.emit('meetingRunStream', sessionId, runId, content, meetingContext);
+    });
+
+    runtime.on('runPolicyViolation', (sessionId, runId, runPolicy, toolName, reason, meetingContext) => {
+      this.sessionEngine.set(sessionId, engine);
+      this.emit('runPolicyViolation', sessionId, runId, runPolicy, toolName, reason, meetingContext);
+    });
   }
 
   private clearRequestEngineBySession(sessionId: string): void {

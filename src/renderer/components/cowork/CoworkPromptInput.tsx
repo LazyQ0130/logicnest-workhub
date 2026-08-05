@@ -141,7 +141,6 @@ import {
   MediaMentionSegmentKind,
   resolveMediaMentionTrigger,
 } from './mediaMentionUtils';
-import MediaModelPicker from './MediaModelPicker';
 import {
   getAttachmentAnalyticsParams,
   getKitAnalyticsParams,
@@ -2960,7 +2959,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   const largeInputToolActions = (
     <div className={`flex items-center ${useLargeToolbarCompactLayout ? 'gap-0' : 'gap-0.5'}`}>
       {largeInputActions}
-      <MediaModelPicker draftKey={draftKey} disabled={disabled || voiceInputLocksEditing} />
     </div>
   );
   const largeSendButtonSizeClass = useCompactSendButton ? 'h-7 w-7' : 'h-8 w-8';
@@ -3648,8 +3646,10 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
                             showFolderMenu ? 'bg-background/80 text-foreground' : ''
                           }`
                       }`}
+                      title={workingDirectory || i18nService.t('noFolderSelected')}
                     >
                       <FolderIcon className="h-4 w-4 shrink-0" />
+                      <span className="shrink-0 text-secondary">{i18nService.t('workingDirectoryLabel')}</span>
                       <span className="min-w-0 truncate">
                         {truncatePath(workingDirectory, ContextLabelMaxLength.Folder)}
                       </span>
@@ -3760,8 +3760,10 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
                               ? 'ring-1 ring-warning text-warning animate-shake'
                               : 'text-secondary hover:bg-surface-raised hover:text-foreground'
                           }`}
+                          title={workingDirectory || i18nService.t('noFolderSelected')}
                         >
                           <FolderIcon className="h-4 w-4 flex-shrink-0" />
+                          <span className="shrink-0 text-xs text-secondary">{i18nService.t('workingDirectoryLabel')}</span>
                           <span className="max-w-[150px] truncate text-xs">
                             {truncatePath(workingDirectory)}
                           </span>

@@ -1,7 +1,7 @@
 {
   "zh": {
     "pptx": {
-      "label": "制作幻灯片",
+      "label": "演示制作",
       "prompts": {
         "pptx-work-report": {
           "label": "工作汇报",
@@ -26,7 +26,7 @@
       }
     },
     "data-analysis": {
-      "label": "数据分析",
+      "label": "数据整理",
       "prompts": {
         "excel-summary": {
           "label": "Excel 汇总统计",
@@ -51,7 +51,7 @@
       }
     },
     "doc-writing": {
-      "label": "文档写作",
+      "label": "文档起草",
       "prompts": {
         "doc-meeting-minutes": {
           "label": "会议纪要整理",
@@ -76,7 +76,7 @@
       }
     },
     "website": {
-      "label": "创建网站",
+      "label": "页面搭建",
       "prompts": {
         "web-resume": {
           "label": "个人简历",
@@ -103,7 +103,7 @@
   },
   "en": {
     "pptx": {
-      "label": "Create Slides",
+      "label": "Presentation Design",
       "prompts": {
         "pptx-work-report": {
           "label": "Work Report",
@@ -128,7 +128,7 @@
       }
     },
     "data-analysis": {
-      "label": "Data Analysis",
+      "label": "Data Organization",
       "prompts": {
         "excel-summary": {
           "label": "Excel Summary",
@@ -153,7 +153,7 @@
       }
     },
     "doc-writing": {
-      "label": "Write Documents",
+      "label": "Document Drafting",
       "prompts": {
         "doc-meeting-minutes": {
           "label": "Meeting Minutes",
@@ -178,7 +178,7 @@
       }
     },
     "website": {
-      "label": "Create Website",
+      "label": "Page Building",
       "prompts": {
         "web-resume": {
           "label": "Personal Resume",

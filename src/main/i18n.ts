@@ -11,6 +11,7 @@
  *   const label = t('trayShowWindow'); // "Open LobsterAI"
  *   const msg = t('imMissingCredentials', { fields: 'appId, appSecret' });
  */
+import { BRAND } from '../shared/brand';
 
 export type LanguageType = 'zh' | 'en';
 
@@ -31,6 +32,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
     permissionNotificationBodyGeneric: 'Agent 请求执行操作，等待你的确认',
     questionNotificationTitle: '等待你的回答',
     questionNotificationBody: '需要你回答问题后才能继续',
+    meetingExportMarkdownTitle: '将会议导出为 Markdown',
+    meetingExportHtmlTitle: '将会议导出为 HTML',
+    meetingExportMarkdownFilter: 'Markdown 文档',
+    meetingExportHtmlFilter: 'HTML 文档',
 
     // Session titles (created by ChannelSessionSync)
     coworkDefaultSessionTitle: '新对话',
@@ -66,16 +71,16 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkErrorOAuthInvalid: 'OAuth 授权已失效或权限不足，请重新授权后重试。',
     coworkErrorModelAccessDenied: '当前账号无权访问该模型，请切换模型或检查服务商账号权限。',
     coworkErrorQuotaExhausted:
-      '积分额度已用完，请升级套餐后继续使用。[立即升级/充值](https://lobsterai.youdao.com/portal#/pricing)',
+      '当前模型额度已用完。请联系管理员，或在设置中配置自己的 API Key。',
     coworkErrorFreeQuotaExhausted:
-      '积分额度已用完，请升级套餐后继续使用。[立即升级/充值](https://lobsterai.youdao.com/portal#/pricing)',
+      '当前模型额度已用完。请联系管理员，或在设置中配置自己的 API Key。',
     coworkErrorInsufficientBalance: 'API 余额不足，请充值后重试。',
     coworkErrorInputTooLong: '输入内容过长，超出模型上下文限制。',
     coworkErrorMessageTooLarge:
       '本次消息过大，请减少附件、压缩图片或拆分提交。（单次整体需小于 30MB）',
     coworkErrorCouldNotProcessPdf: '无法处理 PDF 文件。',
     coworkErrorModelNotFound: '请求的模型不存在或不可用。',
-    coworkGatewaySessionSyncTimeout: 'OpenClaw 引擎响应缓慢，消息尚未发送。请等待 1~2 分钟后重新发送；若频繁出现，请检查系统内存与磁盘占用，并将 LobsterAI 加入杀毒软件白名单。',
+    coworkGatewaySessionSyncTimeout: 'OpenClaw 引擎响应缓慢，消息尚未发送。请等待 1~2 分钟后重新发送；若频繁出现，请检查系统内存、磁盘占用和应用日志。',
     coworkErrorTranscriptOversized: '该任务的历史记录过大。为保护 AI 引擎，本次消息未发送；请新建任务继续，原任务记录仍会保留。',
     coworkErrorGatewayHeapOutOfMemory: '本地 AI 引擎内存不足并已自动重启。当前任务可能过大，请等待恢复后在新任务中继续。',
     coworkErrorGatewayDisconnected: 'AI 引擎连接中断，请重试。',
@@ -164,6 +169,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     imRecentErrorConnectedSuggestion: '当前已连接，但建议修复该错误避免后续中断。',
     imRecentErrorDisconnectedSuggestion: '该错误可能阻断对话，请优先修复后重试。',
     imConfigIncomplete: '配置不完整',
+    scheduledTaskRetiredMessageChannel: '该消息渠道已停用，定时任务不会再向其投递',
+    imWeixinLoginProviderUnavailable: '微信登录组件缺失或加载失败。请重启开发客户端以执行自动修复；若仍失败，请重新构建 OpenClaw 运行时。',
     imUnknownPlatform: '未知平台。',
 
     // QQ
@@ -173,6 +180,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     imEmailImapAuthPassed: 'IMAP 邮箱登录验证通过。',
     imEmailImapAuthFailed: 'IMAP 邮箱登录验证失败',
     imEmailWsAuthPassed: 'API Key 已配置。',
+    imEmailWsDisabled: '逻栖工枢已禁用托管邮箱 WebSocket 授权；请改用用户自行配置的 IMAP/SMTP。',
     imQqAccessTokenFailed: '获取 AccessToken 失败',
     imQqFillAppIdSecret: '请补全 AppID 和 AppSecret 后重新测试连通性。',
     imQqAuthFailed: 'QQ 鉴权失败: {error}',
@@ -341,6 +349,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
     permissionNotificationBodyGeneric: 'The agent requests to run an action and is waiting for your confirmation.',
     questionNotificationTitle: 'Waiting for Your Answer',
     questionNotificationBody: 'Waiting for your answer to continue.',
+    meetingExportMarkdownTitle: 'Export meeting as Markdown',
+    meetingExportHtmlTitle: 'Export meeting as HTML',
+    meetingExportMarkdownFilter: 'Markdown document',
+    meetingExportHtmlFilter: 'HTML document',
 
     // Session titles
     coworkDefaultSessionTitle: 'New Chat',
@@ -387,16 +399,16 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkErrorOAuthInvalid: 'OAuth authorization is invalid or missing required access. Re-authenticate and try again.',
     coworkErrorModelAccessDenied: 'This account is not allowed to access the selected model. Switch models or check provider account permissions.',
     coworkErrorQuotaExhausted:
-      'Your credits have been used up. Upgrade your plan to continue.\n\n[Upgrade or recharge](https://lobsterai.youdao.com/portal#/pricing)',
+      'The current model quota is exhausted. Contact your administrator or configure your own API key in Settings.',
     coworkErrorFreeQuotaExhausted:
-      'Your credits have been used up. Upgrade your plan to continue.\n\n[Upgrade or recharge](https://lobsterai.youdao.com/portal#/pricing)',
+      'The current model quota is exhausted. Contact your administrator or configure your own API key in Settings.',
     coworkErrorInsufficientBalance: 'Insufficient API balance. Please top up and try again.',
     coworkErrorInputTooLong: 'Input too long, exceeding model context limit.',
     coworkErrorMessageTooLarge:
       'This message is too large. Reduce attachments, compress images, or split it up. (Keep each message under about 30 MB.)',
     coworkErrorCouldNotProcessPdf: 'Unable to process the PDF file.',
     coworkErrorModelNotFound: 'The requested model does not exist or is unavailable.',
-    coworkGatewaySessionSyncTimeout: 'The OpenClaw engine is responding slowly and your message has not been sent. Please wait a minute or two and resend. If this happens frequently, check system memory and disk usage, and add LobsterAI to your antivirus allowlist.',
+    coworkGatewaySessionSyncTimeout: 'The OpenClaw engine is responding slowly and your message has not been sent. Please wait a minute or two and resend. If this happens frequently, check system memory, disk usage, and the application logs.',
     coworkErrorTranscriptOversized: 'This task history is too large. The message was not sent to protect the AI engine. Continue in a new task; the original task will be preserved.',
     coworkErrorGatewayHeapOutOfMemory: 'The local AI engine ran out of memory and is restarting automatically. This task may be too large; wait for recovery and continue in a new task.',
     coworkErrorGatewayDisconnected: 'AI engine connection lost. Please retry.',
@@ -502,6 +514,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     imRecentErrorDisconnectedSuggestion:
       'This error may block conversations. Please fix it and retry.',
     imConfigIncomplete: 'Configuration incomplete',
+    scheduledTaskRetiredMessageChannel: 'This message channel has been retired and scheduled delivery is disabled',
+    imWeixinLoginProviderUnavailable: 'The WeChat login provider is missing or failed to load. Restart the development client to run automatic repair; rebuild the OpenClaw runtime if it still fails.',
     imUnknownPlatform: 'Unknown platform.',
 
     // QQ
@@ -513,6 +527,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     imEmailImapAuthPassed: 'IMAP email login verification passed.',
     imEmailImapAuthFailed: 'IMAP email login verification failed',
     imEmailWsAuthPassed: 'API Key configured.',
+    imEmailWsDisabled: 'Hosted email WebSocket authorization is disabled. Configure IMAP/SMTP directly instead.',
     imQqAccessTokenFailed: 'Failed to obtain AccessToken',
     imQqFillAppIdSecret: 'Please provide the AppID and AppSecret and test connectivity again.',
     imQqAuthFailed: 'QQ authentication failed: {error}',
@@ -714,5 +729,9 @@ export function t(key: string, params?: Record<string, string | number>): string
       text = text.replace(`{${k}}`, String(v));
     }
   }
-  return text;
+  const productName = currentLanguage === 'zh' ? BRAND.nameZh : BRAND.nameEn;
+  return text
+    .replaceAll('网易有道LobsterAI', productName)
+    .replaceAll('NetEase Youdao LobsterAI', productName)
+    .replaceAll('LobsterAI', productName);
 }

@@ -1,4 +1,5 @@
 import type { OpenClawSessionPatch } from '../../common/openclawSession';
+import type { AppDocumentation } from '../../shared/app/constants';
 import type { AppUpdateCheckResult, AppUpdateRuntimeState } from '../../shared/appUpdate/constants';
 import type {
   AsrRealtimeSessionRequest,
@@ -45,6 +46,7 @@ import type {
   HtmlShareSourceType,
   HtmlShareStatus,
 } from '../../shared/htmlShare/constants';
+import type { IMConnectivityTestResult } from '../../shared/im';
 import type {
   InstalledKitRecord,
   KitReference,
@@ -52,9 +54,26 @@ import type {
   ResolvedKitCapabilities,
 } from '../../shared/kit/constants';
 import type {
+  LicenseActionResponse,
+  LicenseCredentials,
+  LicenseRegistration,
+  LicenseState,
+} from '../../shared/license';
+import type {
   ListLocalWebServicesOptions,
   LocalWebService,
 } from '../../shared/localWebServices/constants';
+import type {
+  MeetingExportResult,
+  MeetingRoomAppendRoundInput,
+  MeetingRoomChangedEvent,
+  MeetingRoomCreateInput,
+  MeetingRoomDto,
+  MeetingRoomIdInput,
+  MeetingRoomListItemDto,
+  MeetingRoomStartInput,
+  MeetingRoomTurnUpdateEvent,
+} from '../../shared/meetingRoom';
 import type {
   OpenClawEngineErrorCode,
   OpenClawEnginePhase as SharedOpenClawEnginePhase,
@@ -561,6 +580,16 @@ interface HtmlShareResult {
 interface IElectronAPI {
   platform: string;
   arch: string;
+  license: {
+    getState: () => Promise<LicenseState>;
+    register: (input: LicenseRegistration) => Promise<LicenseActionResponse>;
+    login: (input: LicenseCredentials) => Promise<LicenseActionResponse>;
+    redeem: (code: string) => Promise<LicenseActionResponse>;
+    logout: () => Promise<LicenseState>;
+    refresh: () => Promise<LicenseActionResponse>;
+    heartbeat: () => Promise<LicenseState>;
+    onStateChanged: (callback: (state: LicenseState) => void) => () => void;
+  };
   store: {
     get: (key: string) => Promise<any>;
     set: (key: string, value: any) => Promise<void>;
@@ -816,6 +845,22 @@ interface IElectronAPI {
     isMaximized: () => Promise<boolean>;
     showSystemMenu: (position: { x: number; y: number }) => void;
     onStateChanged: (callback: (state: WindowState) => void) => () => void;
+  };
+  meetingRoom: {
+    list: () => Promise<MeetingRoomListItemDto[]>;
+    get: (input: MeetingRoomIdInput) => Promise<MeetingRoomDto>;
+    create: (input: MeetingRoomCreateInput) => Promise<MeetingRoomDto>;
+    delete: (input: MeetingRoomIdInput) => Promise<void>;
+    start: (input: MeetingRoomStartInput) => Promise<MeetingRoomDto>;
+    pause: (input: MeetingRoomIdInput) => Promise<MeetingRoomDto>;
+    resume: (input: MeetingRoomIdInput) => Promise<MeetingRoomDto>;
+    stop: (input: MeetingRoomIdInput) => Promise<MeetingRoomDto>;
+    appendRound: (input: MeetingRoomAppendRoundInput) => Promise<MeetingRoomDto>;
+    retryHost: (input: MeetingRoomIdInput) => Promise<MeetingRoomDto>;
+    exportMarkdown: (input: MeetingRoomIdInput) => Promise<MeetingExportResult>;
+    exportHtml: (input: MeetingRoomIdInput) => Promise<MeetingExportResult>;
+    onChanged: (callback: (event: MeetingRoomChangedEvent) => void) => () => void;
+    onTurnUpdate: (callback: (event: MeetingRoomTurnUpdateEvent) => void) => () => void;
   };
   cowork: {
     startSession: (options: {
@@ -1364,6 +1409,7 @@ interface IElectronAPI {
       updatedAt: number;
     }>;
     relaunch: () => Promise<void>;
+    openDocumentation: (document: AppDocumentation) => Promise<{ success: boolean; error?: string }>;
     openSystemNotificationSettings: () => Promise<{ success: boolean; error?: string }>;
   };
   appUpdate: {
@@ -2386,39 +2432,6 @@ interface NimInstanceStatus extends NimGatewayStatus {
 
 interface NimMultiInstanceStatus {
   instances: NimInstanceStatus[];
-}
-
-type IMConnectivityVerdict = 'pass' | 'warn' | 'fail';
-
-type IMConnectivityCheckLevel = 'pass' | 'info' | 'warn' | 'fail';
-
-type IMConnectivityCheckCode =
-  | 'missing_credentials'
-  | 'auth_check'
-  | 'gateway_running'
-  | 'inbound_activity'
-  | 'outbound_activity'
-  | 'platform_last_error'
-  | 'feishu_group_requires_mention'
-  | 'feishu_event_subscription_required'
-  | 'discord_group_requires_mention'
-  | 'telegram_privacy_mode_hint'
-  | 'dingtalk_bot_membership_hint'
-  | 'nim_p2p_only_hint'
-  | 'qq_guild_mention_hint';
-
-interface IMConnectivityCheck {
-  code: IMConnectivityCheckCode;
-  level: IMConnectivityCheckLevel;
-  message: string;
-  suggestion?: string;
-}
-
-interface IMConnectivityTestResult {
-  platform: Platform;
-  testedAt: number;
-  verdict: IMConnectivityVerdict;
-  checks: IMConnectivityCheck[];
 }
 
 interface DingTalkGatewayStatus {

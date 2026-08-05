@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LobsterAI</title>
+    <title>逻栖工枢 · LogicNest WorkHub</title>
     <style>
       /* Pre-React splash: a static replica of EngineStartupOverlay so the whole
          startup (window shown -> renderer init -> engine starting) is one
@@ -19,16 +19,16 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background: #ffffff;
+        background: #fafaf9;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
       }
       html.dark .splash {
-        background: #1a1d27;
+        background: #171717;
       }
       .splash-gradient {
         position: absolute;
         inset: 0;
-        background: linear-gradient(360deg, rgba(255, 0, 77, 0) 5.5%, rgba(255, 0, 77, 0.05) 100%);
+        background: transparent;
       }
       .splash-content {
         position: relative;
@@ -46,9 +46,12 @@
         position: absolute;
         inset: -8px;
         border-radius: 24px;
-        background: rgba(59, 130, 246, 0.2);
+        background: rgba(24, 24, 27, 0.08);
         filter: blur(24px);
         animation: splash-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
+      html.dark .splash-logo-glow {
+        background: rgba(255, 255, 255, 0.06);
       }
       .splash-logo {
         position: relative;
@@ -64,34 +67,37 @@
         font-size: 24px;
         line-height: 32px;
         font-weight: 700;
-        color: #1a1d23;
+        color: #18181b;
         text-align: center;
       }
       html.dark .splash-title {
-        color: #e4e5e9;
+        color: #f5f5f4;
       }
       .splash-subtitle {
         margin: 0 0 32px;
         font-size: 14px;
         line-height: 20px;
-        color: #6b7280;
+        color: #5f5f5b;
         text-align: center;
       }
       html.dark .splash-subtitle {
-        color: #8b8fa3;
+        color: #b0b0ac;
       }
       .splash-bar {
         position: relative;
         width: 100%;
         height: 6px;
         border-radius: 9999px;
-        background: rgba(59, 130, 246, 0.15);
+        background: rgba(24, 24, 27, 0.1);
         overflow: hidden;
+      }
+      html.dark .splash-bar {
+        background: rgba(255, 255, 255, 0.1);
       }
       .splash-bar-shimmer {
         position: absolute;
         inset: 0;
-        background: linear-gradient(to right, transparent, #3b82f6, transparent);
+        background: linear-gradient(to right, transparent, #52525b, transparent);
         animation: splash-shimmer 1.5s infinite;
       }
       .splash-bar-below {
@@ -102,14 +108,14 @@
       .splash-tips {
         width: 100%;
         margin-top: 40px;
-        border: 1px solid rgba(224, 226, 231, 0.3);
+        border: 1px solid rgba(24, 24, 27, 0.08);
         border-radius: 12px;
-        background: rgba(240, 241, 244, 0.6);
+        background: rgba(24, 24, 27, 0.035);
         padding: 12px 16px;
       }
       html.dark .splash-tips {
-        border-color: rgba(42, 46, 56, 0.3);
-        background: rgba(36, 40, 48, 0.6);
+        border-color: rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.04);
       }
       .splash-tips-label {
         display: flex;
@@ -119,22 +125,25 @@
         font-size: 12px;
         line-height: 16px;
         font-weight: 500;
-        color: #3b82f6;
+        color: #3f3f46;
       }
       .splash-tips-label svg {
         width: 14px;
         height: 14px;
         flex-shrink: 0;
       }
+      html.dark .splash-tips-label {
+        color: #d4d4d4;
+      }
       .splash-tip-text {
         margin: 0;
         min-height: 40px;
         font-size: 14px;
         line-height: 1.625;
-        color: #6b7280;
+        color: #5f5f5b;
       }
       html.dark .splash-tip-text {
-        color: #8b8fa3;
+        color: #b0b0ac;
       }
       .splash-tip-dots {
         display: flex;
@@ -147,7 +156,7 @@
         width: 4px;
         height: 4px;
         border-radius: 9999px;
-        background: rgba(59, 130, 246, 0.25);
+        background: rgba(24, 24, 27, 0.22);
         border: 0;
         padding: 0;
         margin: 0;
@@ -155,6 +164,9 @@
         transition: all 0.3s;
         -webkit-appearance: none;
         appearance: none;
+      }
+      html.dark .splash-dot {
+        background: rgba(255, 255, 255, 0.24);
       }
       /* enlarged hit area, same as the React overlay's after:-inset-* */
       .splash-dot::after {
@@ -166,12 +178,16 @@
         right: -2px;
       }
       .splash-dot:hover {
-        background: rgba(59, 130, 246, 0.5);
+        background: rgba(24, 24, 27, 0.45);
       }
       .splash-dot-active,
       .splash-dot-active:hover {
         width: 12px;
-        background: #3b82f6;
+        background: #3f3f46;
+      }
+      html.dark .splash-dot-active,
+      html.dark .splash-dot-active:hover {
+        background: #d4d4d4;
       }
       @keyframes splash-pulse {
         0%,
@@ -201,7 +217,7 @@
             appearance = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
           }
           document.documentElement.classList.add(appearance);
-          document.documentElement.style.backgroundColor = appearance === 'dark' ? '#0F1117' : '#F8F9FB';
+          document.documentElement.style.backgroundColor = appearance === 'dark' ? '#171717' : '#F7F7F5';
         } catch (e) {
           console.error('Error applying theme early:', e);
         }
@@ -215,7 +231,7 @@
         <div class="splash-content">
           <div class="splash-logo-wrap">
             <div class="splash-logo-glow"></div>
-            <img class="splash-logo" src="logo.png" alt="LobsterAI" width="72" height="72" draggable="false" />
+            <img class="splash-logo" src="logo.png" alt="逻栖工枢" width="72" height="72" draggable="false" />
           </div>
           <h1 class="splash-title" id="splash-title">AI 引擎启动中</h1>
           <p class="splash-subtitle" id="splash-subtitle">加载中...</p>

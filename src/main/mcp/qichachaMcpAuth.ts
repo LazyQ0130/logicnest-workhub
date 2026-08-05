@@ -4,7 +4,7 @@ import http from 'http';
 
 const QICHACHA_ISSUER = 'https://agent.qcc.com';
 const QICHACHA_RESOURCE = 'https://agent.qcc.com/mcp/company/stream';
-const QICHACHA_CLIENT_NAME = 'LobsterAI';
+const QICHACHA_CLIENT_NAME = 'LogicNest WorkHub';
 const QICHACHA_AUTH_TIMEOUT_MS = 5 * 60 * 1000;
 
 type QichachaRegistrationResponse = {
@@ -39,10 +39,6 @@ function trimNonEmpty(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
-}
-
-function maskSecret(value: string): string {
-  return value.length <= 12 ? '***' : `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
 async function registerQichachaClient(redirectUri: string): Promise<string> {
@@ -87,7 +83,7 @@ function startCallbackServer(expectedState: string): Promise<{ redirectUri: stri
         return;
       }
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      res.end('<h1>Qichacha authorization complete</h1><p>You can return to LobsterAI.</p>');
+      res.end('<h1>Qichacha authorization complete</h1><p>You can return to LogicNest WorkHub.</p>');
     });
 
     server.once('error', reject);
@@ -207,7 +203,7 @@ export async function startQichachaMcpApiKeyLogin(parentWindow?: BrowserWindow |
           const result = await probeQichachaApiKey(authWindow);
           const apiKey = trimNonEmpty(result.apiKey);
           if (apiKey) {
-            console.log(`[QichachaMCP] API Key received: ${maskSecret(apiKey)}`);
+            console.log('[QichachaMCP] API Key received: present=true count=1');
             settle(null, apiKey);
           }
         } catch (error) {

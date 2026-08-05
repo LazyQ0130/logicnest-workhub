@@ -1,0 +1,257 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum DeviceStatus {
+  ACTIVE
+  SUSPENDED
+  UNBOUND
+}
+
+enum PlanStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum LicenseKeyStatus {
+  UNUSED
+  REDEEMED
+  REVOKED
+  EXPIRED
+}
+
+enum EntitlementStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  OPERATOR
+  AUDITOR
+}
+
+enum AdminStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum AuditActorType {
+  USER
+  ADMIN
+  SYSTEM
+}
+
+model User {
+  id              String          @id @db.Char(36)
+  uid             String          @unique @db.VarChar(24)
+  phoneNormalized String          @unique @map("phone_normalized") @db.VarChar(20)
+  phoneLast4      String          @map("phone_last4") @db.Char(4)
+  passwordHash    String          @map("password_hash") @db.VarChar(255)
+  status          UserStatus      @default(ACTIVE)
+  tokenVersion    Int             @default(1) @map("token_version") @db.UnsignedInt
+  createdAt       DateTime        @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime        @updatedAt @map("updated_at") @db.DateTime(3)
+  lastLoginAt     DateTime?       @map("last_login_at") @db.DateTime(3)
+  passwordResetAt DateTime?       @map("password_reset_at") @db.DateTime(3)
+  refreshTokens   RefreshToken[]
+  devices         Device[]
+  entitlement     Entitlement?
+  redeemedKeys    LicenseKey[]    @relation("RedeemedByUser")
+
+  @@index([status, createdAt])
+  @@map("users")
+}
+
+model RefreshToken {
+  id             String    @id @db.Char(36)
+  userId         String    @map("user_id") @db.Char(36)
+  deviceId       String?   @map("device_id") @db.Char(36)
+  tokenDigest    String    @unique @map("token_digest") @db.Char(64)
+  familyId       String    @map("family_id") @db.Char(36)
+  replacedBy     String?   @map("replaced_by") @db.Char(64)
+  expiresAt      DateTime  @map("expires_at") @db.DateTime(3)
+  revokedAt      DateTime? @map("revoked_at") @db.DateTime(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  lastUsedAt     DateTime? @map("last_used_at") @db.DateTime(3)
+  createdIpHash  String?   @map("created_ip_hash") @db.Char(64)
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device         Device?   @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([userId, familyId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model Device {
+  id                String         @id @db.Char(36)
+  userId            String?        @map("user_id") @db.Char(36)
+  fingerprintDigest String         @unique @map("fingerprint_digest") @db.Char(64)
+  fingerprintHint   String         @map("fingerprint_hint") @db.VarChar(16)
+  status            DeviceStatus   @default(ACTIVE)
+  tokenVersion      Int            @default(1) @map("token_version") @db.UnsignedInt
+  boundAt           DateTime?      @map("bound_at") @db.DateTime(3)
+  unboundAt         DateTime?      @map("unbound_at") @db.DateTime(3)
+  lastSeenAt        DateTime?      @map("last_seen_at") @db.DateTime(3)
+  clientVersion     String?        @map("client_version") @db.VarChar(64)
+  lastIpHash        String?        @map("last_ip_hash") @db.Char(64)
+  createdAt         DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
+  user              User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  entitlement       Entitlement?
+  redeemedKeys      LicenseKey[]   @relation("RedeemedByDevice")
+  refreshTokens     RefreshToken[]
+
+  @@index([userId, status])
+  @@index([lastSeenAt])
+  @@map("devices")
+}
+
+model Plan {
+  id           String       @id @db.Char(36)
+  code         String       @unique @db.VarChar(32)
+  name         String       @db.VarChar(80)
+  durationDays Int          @map("duration_days") @db.UnsignedInt
+  status       PlanStatus   @default(ACTIVE)
+  createdAt    DateTime     @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
+  batches      LicenseBatch[]
+  licenseKeys  LicenseKey[]
+  entitlements Entitlement[]
+
+  @@index([status])
+  @@map("plans")
+}
+
+model LicenseBatch {
+  id               String       @id @db.Char(36)
+  planId           String       @map("plan_id") @db.Char(36)
+  createdByAdminId String       @map("created_by_admin_id") @db.Char(36)
+  count            Int          @db.UnsignedInt
+  expiresAt        DateTime?    @map("expires_at") @db.DateTime(3)
+  createdAt        DateTime     @default(now()) @map("created_at") @db.DateTime(3)
+  plan             Plan         @relation(fields: [planId], references: [id], onDelete: Restrict)
+  createdByAdmin   Admin        @relation(fields: [createdByAdminId], references: [id], onDelete: Restrict)
+  licenseKeys      LicenseKey[]
+
+  @@index([planId, createdAt])
+  @@map("license_batches")
+}
+
+model LicenseKey {
+  id                 String            @id @db.Char(36)
+  batchId            String            @map("batch_id") @db.Char(36)
+  planId             String            @map("plan_id") @db.Char(36)
+  digest             String            @unique @db.Char(64)
+  lastFour           String            @map("last_four") @db.Char(4)
+  status             LicenseKeyStatus  @default(UNUSED)
+  expiresAt          DateTime?         @map("expires_at") @db.DateTime(3)
+  redeemedAt         DateTime?         @map("redeemed_at") @db.DateTime(3)
+  redeemedByUserId   String?           @map("redeemed_by_user_id") @db.Char(36)
+  redeemedByDeviceId String?           @map("redeemed_by_device_id") @db.Char(36)
+  entitlementId      String?           @map("entitlement_id") @db.Char(36)
+  revokedAt          DateTime?         @map("revoked_at") @db.DateTime(3)
+  revokeReason       String?           @map("revoke_reason") @db.VarChar(255)
+  createdAt          DateTime          @default(now()) @map("created_at") @db.DateTime(3)
+  batch              LicenseBatch      @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  plan               Plan              @relation(fields: [planId], references: [id], onDelete: Restrict)
+  redeemedByUser     User?             @relation("RedeemedByUser", fields: [redeemedByUserId], references: [id], onDelete: SetNull)
+  redeemedByDevice   Device?           @relation("RedeemedByDevice", fields: [redeemedByDeviceId], references: [id], onDelete: SetNull)
+  entitlement        Entitlement?      @relation(fields: [entitlementId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([batchId])
+  @@index([planId, status])
+  @@index([redeemedByUserId])
+  @@map("license_keys")
+}
+
+model Entitlement {
+  id         String            @id @db.Char(36)
+  userId     String            @unique @map("user_id") @db.Char(36)
+  deviceId   String            @unique @map("device_id") @db.Char(36)
+  planId     String            @map("plan_id") @db.Char(36)
+  status     EntitlementStatus @default(ACTIVE)
+  startsAt   DateTime          @map("starts_at") @db.DateTime(3)
+  expiresAt  DateTime          @map("expires_at") @db.DateTime(3)
+  version    Int               @default(1) @db.UnsignedInt
+  revokedAt  DateTime?         @map("revoked_at") @db.DateTime(3)
+  reason     String?           @db.VarChar(255)
+  createdAt  DateTime          @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime          @updatedAt @map("updated_at") @db.DateTime(3)
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device     Device            @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+  plan       Plan              @relation(fields: [planId], references: [id], onDelete: Restrict)
+  licenseKeys LicenseKey[]
+
+  @@index([status, expiresAt])
+  @@map("entitlements")
+}
+
+model Admin {
+  id                 String         @id @db.Char(36)
+  username           String         @unique @db.VarChar(64)
+  passwordHash       String         @map("password_hash") @db.VarChar(255)
+  role               AdminRole      @default(OPERATOR)
+  status             AdminStatus    @default(ACTIVE)
+  mustChangePassword Boolean        @default(true) @map("must_change_password")
+  loginFailures      Int            @default(0) @map("login_failures") @db.UnsignedInt
+  lockedUntil        DateTime?      @map("locked_until") @db.DateTime(3)
+  sessionVersion     Int            @default(1) @map("session_version") @db.UnsignedInt
+  createdAt          DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt          DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
+  lastLoginAt        DateTime?      @map("last_login_at") @db.DateTime(3)
+  sessions           AdminSession[]
+  batches            LicenseBatch[]
+
+  @@index([status])
+  @@map("admins")
+}
+
+model AdminSession {
+  id             String    @id @db.Char(36)
+  adminId        String    @map("admin_id") @db.Char(36)
+  sessionDigest  String    @unique @map("session_digest") @db.Char(64)
+  csrfDigest     String    @map("csrf_digest") @db.Char(64)
+  sessionVersion Int       @map("session_version") @db.UnsignedInt
+  expiresAt      DateTime  @map("expires_at") @db.DateTime(3)
+  revokedAt      DateTime? @map("revoked_at") @db.DateTime(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  lastSeenAt     DateTime? @map("last_seen_at") @db.DateTime(3)
+  createdIpHash  String?   @map("created_ip_hash") @db.Char(64)
+  admin          Admin     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId, expiresAt])
+  @@map("admin_sessions")
+}
+
+model AuditLog {
+  id          BigInt         @id @default(autoincrement()) @db.UnsignedBigInt
+  actorType   AuditActorType @map("actor_type")
+  actorId     String?        @map("actor_id") @db.Char(36)
+  action      String         @db.VarChar(80)
+  targetType  String         @map("target_type") @db.VarChar(64)
+  targetId    String?        @map("target_id") @db.VarChar(64)
+  result      String         @db.VarChar(32)
+  requestId   String         @map("request_id") @db.VarChar(64)
+  ipHash      String?        @map("ip_hash") @db.Char(64)
+  metadata    Json?
+  createdAt   DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([createdAt])
+  @@index([actorType, actorId, createdAt])
+  @@index([targetType, targetId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}

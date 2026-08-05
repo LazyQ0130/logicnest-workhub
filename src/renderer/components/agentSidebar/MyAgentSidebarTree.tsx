@@ -45,6 +45,7 @@ import type { AgentSidebarAgentNode, AgentSidebarTaskNode } from './types';
 import { useAgentSidebarState } from './useAgentSidebarState';
 
 interface MyAgentSidebarTreeProps {
+  displayMode: 'tasks' | 'assistants';
   isBatchMode: boolean;
   batchAgentId: string | null;
   deletedSessionIds: string[];
@@ -55,6 +56,7 @@ interface MyAgentSidebarTreeProps {
     isCurrentSession: boolean;
     taskStatus: string;
   }) => void;
+  onAgentSelected?: (params: { agentType: 'main' | 'custom' }) => void;
   onSidebarAction?: (actionType: string, params?: {
     agentType?: 'main' | 'custom';
     hasActiveSubagent?: boolean;
@@ -107,12 +109,14 @@ const SortableAgentNode: React.FC<{
 };
 
 const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
+  displayMode,
   isBatchMode,
   batchAgentId,
   deletedSessionIds,
   selectedKeys,
   onShowCowork,
   onTaskSelected,
+  onAgentSelected,
   onSidebarAction,
   onToggleSelection,
   onEnterBatchMode,
@@ -164,6 +168,13 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
     void agentService.loadAgents();
   }, []);
 
+  useEffect(() => {
+    if (displayMode !== 'tasks') return;
+    agentNodes.forEach((agent) => {
+      if (!agent.isExpanded) expandAgent(agent.id);
+    });
+  }, [agentNodes, displayMode, expandAgent]);
+
   const handleSelectTask = useCallback(async (task: AgentSidebarTaskNode) => {
     onTaskSelected?.({
       agentType: isDefaultAgentId(task.agentId) ? 'main' : 'custom',
@@ -184,6 +195,21 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
       coworkService.finishSessionNavigation(task.id);
     }
   }, [currentAgentId, currentSessionId, onShowCowork, onTaskSelected]);
+
+  const handleSelectAgent = useCallback(async (agent: AgentSidebarAgentNode) => {
+    onAgentSelected?.({ agentType: getAgentType(agent.id) });
+    if (agent.id !== currentAgentId) {
+      agentService.switchAgent(agent.id);
+      await coworkService.loadSessions(agent.id);
+    }
+    coworkService.clearSession({ restoreAgentSkills: true });
+    dispatch(setDraftCollaborationMode({
+      draftKey: '__home__',
+      mode: CoworkCollaborationMode.Default,
+    }));
+    onShowCowork();
+    window.dispatchEvent(new CustomEvent(CoworkUiEvent.SelectSubagent, { detail: null }));
+  }, [currentAgentId, dispatch, getAgentType, onAgentSelected, onShowCowork]);
 
   useEffect(() => {
     const handleSwitchAgent = (event: Event) => {
@@ -216,6 +242,10 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
       expandAgent(currentAgentId);
       void expandTasks(currentAgentId);
       onShowCowork();
+    };
+
+    const handleOpenCurrentAgentSettings = () => {
+      setSettingsAgentId(currentAgentId);
     };
 
     const handleOpenAgentTaskSlot = (event: Event) => {
@@ -252,10 +282,12 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
     window.addEventListener(CoworkUiEvent.ShortcutSwitchAgent, handleSwitchAgent);
     window.addEventListener(CoworkUiEvent.ShortcutShowCurrentAgentTasks, handleShowCurrentAgentTasks);
     window.addEventListener(CoworkUiEvent.ShortcutOpenAgentTaskSlot, handleOpenAgentTaskSlot);
+    window.addEventListener(CoworkUiEvent.OpenCurrentAgentSettings, handleOpenCurrentAgentSettings);
     return () => {
       window.removeEventListener(CoworkUiEvent.ShortcutSwitchAgent, handleSwitchAgent);
       window.removeEventListener(CoworkUiEvent.ShortcutShowCurrentAgentTasks, handleShowCurrentAgentTasks);
       window.removeEventListener(CoworkUiEvent.ShortcutOpenAgentTaskSlot, handleOpenAgentTaskSlot);
+      window.removeEventListener(CoworkUiEvent.OpenCurrentAgentSettings, handleOpenCurrentAgentSettings);
     };
   }, [agentNodes, currentAgentId, expandAgent, expandTasks, onShowCowork]);
 
@@ -403,11 +435,14 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
     >
       <AgentTreeNode
         agent={agent}
+        displayMode={displayMode}
+        isCurrentAgent={agent.id === currentAgentId}
         isBatchMode={isBatchMode}
         batchAgentId={batchAgentId}
         selectedKeys={selectedKeys}
         showBatchOption
         onToggleExpanded={toggleAgentExpanded}
+        onSelectAgent={(targetAgent) => { void handleSelectAgent(targetAgent); }}
         onEditAgent={(agent) => {
           onSidebarAction?.('agent_edit', {
             agentType: getAgentType(agent.id),
@@ -498,7 +533,11 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
   }, [agentNodes, batchAgentId, onBatchSelectableItemsChange]);
 
   return (
-    <div className="pb-3" role="tree" aria-label={i18nService.t('myAgents')}>
+    <div
+      className="pb-3"
+      role="tree"
+      aria-label={i18nService.t(displayMode === 'tasks' ? 'taskHistory' : 'myAgents')}
+    >
       {hasPinnedAgents && (
         <div className="space-y-0.5">
           <div className="sticky top-0 z-30 -ml-[6px] flex h-10 w-[calc(100%+12px)] items-center bg-surface-raised pl-3 pr-1">
@@ -510,19 +549,21 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
         </div>
       )}
 
-      <MyAgentSidebarHeader
-        onCreateAgent={() => {
-          setCreateAgentSource('home_agent_sidebar');
-          setIsCreateOpen(true);
-        }}
-      />
+      {displayMode === 'assistants' && (
+        <MyAgentSidebarHeader
+          onCreateAgent={() => {
+            setCreateAgentSource('home_agent_sidebar');
+            setIsCreateOpen(true);
+          }}
+        />
+      )}
 
       {agentNodes.length === 0 ? (
         <div className="px-3 py-6 text-center">
           <p className="text-xs font-medium text-secondary">
             {i18nService.t('myAgentSidebarNoAgents')}
           </p>
-          <button
+          {displayMode === 'assistants' && <button
             type="button"
             onClick={() => {
               setCreateAgentSource('home_agent_sidebar_empty');
@@ -531,7 +572,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
             className="mt-3 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-primary-hover"
           >
             {i18nService.t('createNewAgent')}
-          </button>
+          </button>}
         </div>
       ) : projectAgentNodes.length > 0 ? (
         <div className="space-y-0.5 px-0">

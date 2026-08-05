@@ -100,14 +100,14 @@ describe('ensure-openclaw-plugins', () => {
 
   test('preserves existing registry and local path behavior', () => {
     expect(resolvePluginInstallSource({
-      id: 'moltbot-popo',
-      npm: 'moltbot-popo',
+      id: 'registry-plugin',
+      npm: 'registry-plugin',
       version: '2.0.7',
       registry: 'https://npm.nie.netease.com',
     })).toEqual({
       kind: 'packed',
-      packSpec: 'moltbot-popo@2.0.7',
-      pinnedDisplaySpec: 'moltbot-popo@2.0.7',
+      packSpec: 'registry-plugin@2.0.7',
+      pinnedDisplaySpec: 'registry-plugin@2.0.7',
       registry: 'https://npm.nie.netease.com',
     });
 

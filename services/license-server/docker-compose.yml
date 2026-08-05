@@ -1,0 +1,54 @@
+name: logicnest-license
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-logicnest_license}
+      MYSQL_USER: ${MYSQL_USER:-logicnest}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in an untracked .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in an untracked .env}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci", "--skip-name-resolve"]
+    volumes:
+      - logicnest_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [license]
+
+  license-server:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER:-logicnest}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE:-logicnest_license}
+      HOST: 0.0.0.0
+      PORT: 8787
+      REQUIRE_HTTPS: "false" # terminate TLS at nginx/load balancer in production
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${LICENSE_SERVER_PORT:-8787}:8787"
+    networks: [license]
+
+  admin-web:
+    build:
+      context: ../admin-web
+    restart: unless-stopped
+    depends_on:
+      license-server:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${ADMIN_WEB_PORT:-4175}:80"
+    networks: [license]
+
+volumes:
+  logicnest_mysql_data:
+
+networks:
+  license:
+    driver: bridge

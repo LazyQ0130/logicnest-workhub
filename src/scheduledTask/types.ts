@@ -114,6 +114,8 @@ export interface ScheduledTaskRunEvent {
 export interface ScheduledTaskChannelOption {
   value: string;
   label: string;
+  /** Legacy channel retained only so an existing task can display its retired target. */
+  retired?: boolean;
   /** Multi-instance platforms use this stable instance selector as
    *  `delivery.accountId`. Plugins may internally map it to a protocol-level
    *  account identity such as appKey:accid. */

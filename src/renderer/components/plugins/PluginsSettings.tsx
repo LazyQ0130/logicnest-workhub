@@ -1,5 +1,5 @@
-import { ArrowPathIcon, ArrowUpCircleIcon, Cog6ToothIcon,PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { useCallback, useEffect, useImperativeHandle, useRef,useState } from 'react';
+import { ArrowPathIcon, ArrowUpCircleIcon, Cog6ToothIcon, MagnifyingGlassIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 
 import { i18nService } from '../../services/i18n';
 import { LogReporterAction, reportYdAnalyzer } from '../../services/logReporter';
@@ -77,6 +77,7 @@ const reportPluginAction = (
 
 export default function PluginsSettings({ handleRef }: PluginsSettingsProps) {
   const [plugins, setPlugins] = useState<PluginListItem[]>([]);
+  const [pluginFilter, setPluginFilter] = useState('');
   const [loading, setLoading] = useState(true);
   // --- Unsaved-changes guard (internal dialog) ---
   const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
@@ -410,6 +411,16 @@ export default function PluginsSettings({ handleRef }: PluginsSettingsProps) {
     }
   };
 
+  const visiblePlugins = useMemo(() => {
+    const query = pluginFilter.trim().toLocaleLowerCase();
+    if (!query) return plugins;
+    return plugins.filter((plugin) => [
+      plugin.pluginId,
+      plugin.description ?? '',
+      plugin.source,
+    ].join(' ').toLocaleLowerCase().includes(query));
+  }, [pluginFilter, plugins]);
+
   // Sub-view: Plugin config page
   if (configPluginId) {
     return (
@@ -424,7 +435,7 @@ export default function PluginsSettings({ handleRef }: PluginsSettingsProps) {
   }
 
   return (
-    <div className="space-y-6 px-1">
+    <div className="space-y-6">
       {/* Syncing overlay */}
       {syncing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -504,6 +515,17 @@ export default function PluginsSettings({ handleRef }: PluginsSettingsProps) {
         </div>
       </div>
 
+      <div className="relative border-y border-border py-3">
+        <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-secondary" />
+        <input
+          type="search"
+          value={pluginFilter}
+          onChange={(event) => setPluginFilter(event.currentTarget.value)}
+          placeholder={i18nService.t('settingsExtensionsFilterPlaceholder')}
+          className="h-9 w-full border border-border bg-background pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-secondary/70 focus:border-foreground"
+        />
+      </div>
+
       {/* Plugin List */}
       {loading ? (
         <div className="text-sm text-muted-foreground py-8 text-center">Loading...</div>
@@ -512,12 +534,16 @@ export default function PluginsSettings({ handleRef }: PluginsSettingsProps) {
           <p className="text-sm text-muted-foreground">{i18nService.t('pluginsEmpty')}</p>
           <p className="text-xs text-muted-foreground mt-1">{i18nService.t('pluginsEmptyHint')}</p>
         </div>
+      ) : visiblePlugins.length === 0 ? (
+        <div className="py-10 text-center text-sm text-muted-foreground">
+          {i18nService.t('settingsExtensionsNoFilterResults')}
+        </div>
       ) : (
-        <div className="space-y-3">
-          {plugins.map(plugin => (
+        <div className="divide-y divide-border border-y border-border">
+          {visiblePlugins.map(plugin => (
             <div
               key={plugin.pluginId}
-              className="flex items-center justify-between rounded-lg border border-border p-4"
+              className="flex items-center justify-between py-4"
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">

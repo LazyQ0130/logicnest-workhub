@@ -18,11 +18,14 @@ import type { AgentSidebarAgentNode, AgentSidebarTaskNode } from './types';
 
 interface AgentTreeNodeProps {
   agent: AgentSidebarAgentNode;
+  displayMode?: 'tasks' | 'assistants';
+  isCurrentAgent?: boolean;
   isBatchMode: boolean;
   batchAgentId: string | null;
   selectedKeys: Set<string>;
   showBatchOption?: boolean;
   onToggleExpanded: (agentId: string) => void;
+  onSelectAgent?: (agent: AgentSidebarAgentNode) => void;
   onEditAgent: (agent: AgentSidebarAgentNode) => void;
   onCreateTask: (agent: AgentSidebarAgentNode) => void;
   onDeleteAgent: (agent: AgentSidebarAgentNode) => Promise<void>;
@@ -81,11 +84,14 @@ const AgentAvatar: React.FC<{ agent: AgentSidebarAgentNode }> = ({ agent }) => {
 
 const AgentTreeNode: React.FC<AgentTreeNodeProps> = ({
   agent,
+  displayMode = 'tasks',
+  isCurrentAgent = false,
   isBatchMode,
   batchAgentId,
   selectedKeys,
   showBatchOption = false,
   onToggleExpanded,
+  onSelectAgent,
   onEditAgent,
   onCreateTask,
   onDeleteAgent,
@@ -254,14 +260,17 @@ const AgentTreeNode: React.FC<AgentTreeNodeProps> = ({
     onCreateTask(agent);
   };
 
-  const handleAgentClick = (event: React.MouseEvent) => {
+  const handleAgentClick = (_event: React.MouseEvent) => {
     onSidebarAction?.('agent_header_click', {
       agentType: isMainAgent ? 'main' : 'custom',
       isExpanded: agent.isExpanded,
       isPinned: agent.pinned,
     });
+    if (displayMode === 'assistants') {
+      onSelectAgent?.(agent);
+      return;
+    }
     onToggleExpanded(agent.id);
-    handleCreateTask(event);
   };
 
   const handleDeleteMenuClick = (event: React.MouseEvent) => {
@@ -291,7 +300,8 @@ const AgentTreeNode: React.FC<AgentTreeNodeProps> = ({
           className="flex h-full w-full items-center gap-2 rounded-md py-0 pl-3.5 pr-12 text-left text-sm font-normal text-foreground transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
           role="treeitem"
           aria-level={1}
-          aria-expanded={agent.isExpanded}
+          aria-expanded={displayMode === 'tasks' ? agent.isExpanded : undefined}
+          aria-current={displayMode === 'assistants' && isCurrentAgent ? 'true' : undefined}
         >
           <span className="flex h-4 w-4 shrink-0 items-center justify-center leading-none text-foreground">
             <AgentAvatar agent={agent} />
@@ -330,14 +340,25 @@ const AgentTreeNode: React.FC<AgentTreeNodeProps> = ({
           >
             <EllipsisHorizontalIcon className="h-3.5 w-3.5" />
           </button>
-          <button
-            type="button"
-            onClick={handleCreateTask}
-            className={rowEditActionButtonClassName}
-            aria-label={i18nService.t('myAgentSidebarNewTask')}
-          >
-            <ComposeIcon className="h-3.5 w-3.5" />
-          </button>
+          {displayMode === 'assistants' ? (
+            <button
+              type="button"
+              onClick={handleEditAgent}
+              className={rowEditActionButtonClassName}
+              aria-label={i18nService.t('assistantSettings')}
+            >
+              <EditIcon className="h-3.5 w-3.5" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleCreateTask}
+              className={rowEditActionButtonClassName}
+              aria-label={i18nService.t('myAgentSidebarNewTask')}
+            >
+              <ComposeIcon className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
 
         {menuPosition && (
@@ -418,7 +439,7 @@ const AgentTreeNode: React.FC<AgentTreeNodeProps> = ({
         )}
       </div>
 
-      {shouldRenderTasks && (
+      {displayMode === 'tasks' && shouldRenderTasks && (
         <div
           className={`grid w-full min-w-0 max-w-full transition-all duration-200 ease-out motion-reduce:transition-none ${
             isTaskGroupVisible ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'

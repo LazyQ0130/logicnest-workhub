@@ -1,247 +1,123 @@
 <h1 align="center">
-  <img src="public/logo.png" alt="LobsterAI" width="96"><br>
-  LobsterAI
+  <img src="public/logo.png" alt="LogicNest WorkHub" width="96"><br>
+  LogicNest WorkHub
 </h1>
 
 <p align="center">
-  <a href="https://github.com/netease-youdao/LobsterAI/stargazers"><img src="https://badgen.net/github/stars/netease-youdao/LobsterAI?label=%E2%98%85" alt="GitHub stars" /></a>
-  <a href="LICENSE"><img src="https://badgen.net/github/license/netease-youdao/LobsterAI" alt="License" /></a>
-  <a href="https://x.com/LobsterAIYoudao"><img src="https://img.shields.io/badge/-000000?logo=x&logoColor=white" alt="Follow LobsterAI on X" /></a>
-  <a href="https://shared.ydstatic.com/market/souti/fihserChatWeb/online/2.0.7/dist/assets/wechat_group-B34qRm1G.png"><img src="https://img.shields.io/badge/-000000?logo=wechat&logoColor=white" alt="Follow LobsterAI on X" /></a>
-  <br>
-  <img src="https://img.shields.io/badge/macOS%20%7C%20Windows-4493F8?style=flat-square" alt="Supported platforms: macOS and Windows" />
-  <img src="https://img.shields.io/badge/Electron-40-47848F?style=flat-square&logo=electron&logoColor=white" alt="Electron 40" />
-  <img src="https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React 18" />
+  <strong>A Windows desktop work hub for AI agents, team workflows, and licensed operations.</strong>
 </p>
 
 <p align="center">
   English · <a href="README_zh.md">中文</a>
 </p>
 
-<p align="center">
-  <strong>All-scenario office assistant Agent.</strong><br/>
-  The first open-source desktop-grade Agent among major Chinese tech companies, built by NetEase Youdao.
-</p>
+LogicNest WorkHub (逻栖工枢) brings agent sessions, local project work, reusable skills, external tools, communication channels, scheduled tasks, and team meeting rooms into one Electron desktop application. OpenClaw is the sole agent runtime and gateway; the desktop layer owns sessions, permissions, local persistence, artifacts, accounts, and product UI.
 
-<p align="center">
-  <a href="#features"><strong>Features</strong></a>
-  &nbsp;·&nbsp;
-  <a href="#developing"><strong>Developing</strong></a>
-  &nbsp;·&nbsp;
-  <a href="#community--support"><strong>Community</strong></a>
-</p>
+> This repository is a modified distribution of [LobsterAI](https://github.com/netease-youdao/LobsterAI), originally developed by NetEase Youdao. The upstream MIT copyright notice and license are preserved in [LICENSE](LICENSE).
 
-<h3 align="center"><a href="https://lobsterai.youdao.com/#/download-list"><ins>Download LobsterAI</ins></a></h3>
+## Highlights
 
-<p align="center">
-  <img src="docs/res/mainpage_en.png" alt="main page" />
-</p>
+- **Desktop agent workspace** — run agent tasks against local files, projects, terminals, browsers, and rich artifacts with permission controls.
+- **Agents, skills, and MCP** — configure specialized agents, built-in skills, and Model Context Protocol servers for repeatable workflows.
+- **Scheduled and remote work** — create scheduled jobs and connect supported IM channels to selected agents.
+- **Meeting rooms** — coordinate structured multi-agent discussions and retain the resulting session state.
+- **Local-first state** — store desktop sessions and configuration locally while keeping renderer access behind the Electron preload bridge.
+- **Licensed operations** — use the included account, activation, device, membership, card, audit, and operations-center services for controlled deployments.
 
-LobsterAI is a desktop Agent that can operate in your real working environment: local files, terminal commands, browser workflows, documents, spreadsheets, slides, IM channels, scheduled jobs, and project workspaces.
+## Architecture
 
-Cowork is the LobsterAI product/session layer. OpenClaw is the runtime and gateway underneath it. That split lets LobsterAI keep local persistence, permissions, UI state, artifacts, agents, memory, and IM bindings in the desktop app while using OpenClaw for agent execution.
-
-## Features
-
-### Desktop Cowork Sessions
-
-Run long-form Agent tasks against local projects and files. LobsterAI streams progress, keeps session history, renders tool output, and asks for approval before sensitive actions such as file operations, terminal commands, or network access.
-
-### Multi-Agent Workflows
-
-Create custom Agents with their own identity, model choice, skills, working directory, enabled state, and IM bindings. Keep the Main Agent for general work and use specialized Agents for repeatable roles.
-
-### Expert Kits
-
-Install scenario-oriented Expert Kits that package capability selections and references for common workflows. Kits are selected independently from direct skills, so a workflow can combine curated kits with individual tools.
-
-### Skills
-
-LobsterAI ships with 28 built-in skills configured in `SKILLs/skills.config.json`, including web search, Word documents, spreadsheets, PowerPoint, PDF processing, Remotion video generation, browser automation, image/video generation, stock research, content writing, email, weather, and skill creation.
-
-### MCP Servers
-
-Connect external tools and data sources through Model Context Protocol servers. LobsterAI stores user-configured servers locally and syncs enabled servers into OpenClaw.
-
-### Scheduled Tasks
-
-Create recurring work either by conversation or through the scheduled task UI. Use it for daily news digests, inbox summaries, website monitoring, weekly reports, and other repeatable work.
-
-### IM Remote Control
-
-Reach your desktop Agent from WeChat, WeCom, DingTalk, Feishu/Lark, QQ, Telegram, Discord, NetEase IM, NetEase Bee, POPO, and email. Multi-instance platforms can bind different accounts or channels to different Agents.
-
-### Rich Artifacts
-
-Preview and manage generated HTML, SVG, images, video, Mermaid diagrams, code, Markdown, text, documents, and local service artifacts inside the desktop app.
-
-### Local Memory And Data
-
-Sessions and app data live locally in SQLite. OpenClaw workspace memory uses files such as `MEMORY.md`, `USER.md`, `SOUL.md`, and daily notes, so durable preferences and project context can carry across sessions.
-
-## Real-World Prompts
-
-| Scenario | Example prompt |
+| Area | Responsibility |
 | --- | --- |
-| Build a local system | "I still track inventory and sales in Excel. Build a local inventory system that records purchases and sales, calculates stock and profit, and opens in my browser." |
-| Analyze local data | "Use `product-growth.xlsx` to build a visual dashboard and summarize the main growth drivers." |
-| Generate a deck | "Research the AI Agent market and turn the findings into a presentation." |
-| Automate browser checks | "Open the ads dashboard every morning, check spend and conversion anomalies, and summarize likely causes." |
-| Screen documents | "Turn the resumes in this folder into a screening sheet and shortlist the strongest candidates against the JD." |
-| Run scheduled work | "Every weekday at 9 AM, collect yesterday's AI news and send me a concise digest." |
+| `src/renderer/` | React, Redux Toolkit, Tailwind, desktop UI, artifacts, settings, agents, skills, MCP, meetings, and activation flows |
+| `src/main/` | Electron lifecycle, IPC, SQLite, permissions, logging, OpenClaw startup, IM gateways, licensing, and local services |
+| `src/shared/` | Cross-process constants, types, brand data, meeting contracts, and license contracts |
+| `src/scheduledTask/` | Scheduled-task policies, mapping, migrations, and tests |
+| `services/license-server/` | License API, account and device state, membership/card workflows, and audit records |
+| `services/admin-web/` | Web operations center for authorized administrators |
+| `SKILLs/` | Bundled reusable agent skills |
 
-## How It Works
+The desktop application uses context isolation, disables renderer Node integration, and exposes privileged operations through typed IPC. OpenClaw configuration and runtime state are generated by the main process from the product's local settings.
 
-<p align="center">
-  <img src="docs/res/architecture_v2_en.png" alt="LobsterAI architecture" width="640">
-</p>
+## Requirements
 
-- **Renderer**: React, Redux Toolkit, Tailwind, artifact renderers, settings, agent/session UI, skills, MCP, scheduled tasks, and IM configuration.
-- **Main process**: Electron lifecycle, IPC, SQLite persistence, auth, logging, OpenClaw startup, runtime repair, skill sync, IM gateways, and artifact services.
-- **OpenClaw integration**: `openclawEngineManager`, `openclawConfigSync`, `openclawRuntimeAdapter`, and `coworkEngineRouter` translate LobsterAI state into OpenClaw runtime behavior.
-
-## Install
-
-### Desktop
-
-Download the latest macOS and Windows installers from [Official Website](https://lobsterai.youdao.com/) or [GitHub Releases](https://github.com/netease-youdao/LobsterAI/releases).
-
-### Run From Source
-
-Requirements:
-
+- Windows development environment
 - Node.js `>=24.15.0 <25`
 - npm
+- The pinned OpenClaw source/runtime dependencies required by the build scripts
+
+## Run from source
 
 ```bash
-git clone https://github.com/netease-youdao/LobsterAI.git
-cd LobsterAI
+git clone https://github.com/LazyQ0130/logicnest-workhub.git
+cd logicnest-workhub
 npm install
 ```
 
-First development run:
+Build and synchronize the pinned OpenClaw runtime on the first development run:
 
 ```bash
 npm run electron:dev:openclaw
 ```
 
-Daily development after the pinned OpenClaw runtime exists:
+For later runs, after the runtime is available:
 
 ```bash
 npm run electron:dev
 ```
 
-The renderer dev server runs at `http://localhost:5175`.
+The renderer development server uses port `5175`.
 
-## Developing
+## Verification
 
 ```bash
-# Production renderer bundle
-npm run build
-
-# Electron main/preload TypeScript build
-npm run compile:electron
-
-# Official Vitest entry used by CI
-npm test
-
-# Full ESLint across src; may expose existing legacy debt
+# Full renderer/main source lint
 npm run lint
 
-# CI-style lint for touched TypeScript files
-npx eslint --ext ts,tsx --report-unused-disable-directives --max-warnings 0 <files>
+# Official Vitest suite, or a focused suite
+npm test
+npm test -- meetingRoom
+
+# Electron main/preload TypeScript compilation
+npm run compile:electron
+
+# Production renderer bundle
+npm run build
 ```
 
-### OpenClaw Runtime
+## License services
 
-The pinned OpenClaw version and third-party plugin list live in `package.json` under `openclaw`.
+The license server and operations center are separate workspaces under `services/`. Their committed `.env.example` files contain placeholders only. Copy an example to a local `.env`, generate independent production secrets, and never commit the resulting environment file, signing material, administrator bootstrap password, database, logs, or exported activation-card data.
+
+Common development commands:
 
 ```bash
-# Build the current-platform runtime manually
-npm run openclaw:runtime:host
+npm run license:install
+npm run license:test
+npm run license:build
 
-# Use a custom OpenClaw source checkout
-OPENCLAW_SRC=/path/to/openclaw npm run electron:dev:openclaw
-
-# Force runtime rebuild
-OPENCLAW_FORCE_BUILD=1 npm run electron:dev:openclaw
-
-# Keep a local OpenClaw checkout on its current branch/tag
-OPENCLAW_SKIP_ENSURE=1 npm run electron:dev:openclaw
+npm run admin:install
+npm run admin:test
+npm run admin:build
 ```
+
+See [deployment guidance](docs/deployment.md), [client activation](docs/client-activation.md), [development notes](docs/development.md), and the [security audit](docs/security-audit.md) before operating a deployment.
 
 ## Packaging
 
-<details>
-<summary>Build desktop installers</summary>
+The current Windows packaging entry is:
 
 ```bash
-# macOS
-npm run dist:mac
-npm run dist:mac:x64
-npm run dist:mac:arm64
-npm run dist:mac:universal
-
-# Windows
 npm run dist:win
-
-# Linux
-npm run dist:linux
 ```
 
-Packaging bundles the OpenClaw runtime under `Resources/cfmind`. Windows builds also bundle a portable Python runtime under `resources/python-win`, so end users do not need to install Python manually.
+Release operators must provide controlled signing credentials, review the final package contents, and retain all required third-party notices. Generated installers, build directories, runtime bundles, databases, logs, and local secrets are intentionally excluded from version control.
 
-Offline or private-source packaging can use:
+## Upstream attribution and third-party licenses
 
-- `LOBSTERAI_PORTABLE_PYTHON_ARCHIVE`
-- `LOBSTERAI_PORTABLE_PYTHON_URL`
-- `LOBSTERAI_WINDOWS_EMBED_PYTHON_VERSION`
-- `LOBSTERAI_WINDOWS_EMBED_PYTHON_URL`
-- `LOBSTERAI_WINDOWS_GET_PIP_URL`
+LogicNest WorkHub is based on [LobsterAI](https://github.com/netease-youdao/LobsterAI), copyright © 2026 NetEase Youdao, and is used under the MIT License. The original MIT notice and terms remain in [LICENSE](LICENSE); modifications do not remove or replace that upstream attribution.
 
-</details>
-
-## Project Map
-
-| Path | Purpose |
-| --- | --- |
-| `src/main/main.ts` | Electron lifecycle, IPC registration, auth, logging, runtime startup, and service wiring |
-| `src/main/libs/openclawEngineManager.ts` | OpenClaw gateway process, runtime state, ports, logs, restart, and repair |
-| `src/main/libs/openclawConfigSync.ts` | Renders LobsterAI providers, models, agents, IM bindings, skills, MCP, and workspace instructions into OpenClaw config |
-| `src/main/libs/agentEngine/openclawRuntimeAdapter.ts` | Translates OpenClaw gateway events into Cowork stream events |
-| `src/main/coworkStore.ts` | Cowork sessions, messages, config, agents, memory metadata, and SQLite CRUD |
-| `src/renderer/components/cowork/` | Main Cowork UI, prompt input, session detail, permissions, thinking/tool display, media, and voice input |
-| `src/renderer/components/agent/` | Agent creation and settings UI |
-| `src/renderer/components/skills/` | Skill management UI |
-| `src/renderer/components/mcp/` | MCP server management UI |
-| `src/renderer/components/scheduledTasks/` | Scheduled task list, form, detail, run history, and templates |
-| `src/renderer/services/i18n.ts` | Renderer i18n dictionary and `t()` helper |
-| `SKILLs/` | Bundled LobsterAI skills |
-
-## Security And Data
-
-- Renderer windows use context isolation, disabled Node integration, and sandboxing.
-- Renderer-to-main access goes through preload IPC APIs.
-- Sensitive tool actions are permission-gated and logged.
-- App data is stored locally in `lobsterai.sqlite` under Electron `userData`.
-- OpenClaw state, workspace memory, generated config, and gateway logs live under `userData/openclaw`.
-
-## Community & Support
-
-Join the WeChat group for help, feedback, and release updates:
-
-<p align="center">
-  <img src="https://shared.ydstatic.com/market/souti/fihserChatWeb/online/2.0.4/dist/assets/wechat_group-B34qRm1G.png" alt="WeChat Community QR Code" width="200">
-</p>
-
-Please use the repository issue templates for bugs and feature requests. For pull requests, include a short summary, linked issue when relevant, screenshots for UI changes, and notes for Electron-specific behavior such as IPC, storage, runtime, or windowing changes.
-
-## Star History
-
-[![Star History Chart](docs/res/star-history-202677.png)](https://www.star-history.com/?repos=netease-youdao%2Flobsterai&type=date&legend=bottom-right)
+This project also includes or bundles npm dependencies, Electron, Chromium, Node.js, the OpenClaw runtime, plugins, icons, fonts, and other components governed by their own licenses. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [docs/third-party-licenses.md](docs/third-party-licenses.md). Release builds must carry all notices and license texts required by the actual locked dependencies and packaged runtime. The MIT License does not grant trademark rights in upstream or project names and logos.
 
 ## License
 
 [MIT License](LICENSE)
-
-Built and maintained by [NetEase Youdao](https://www.youdao.com/).

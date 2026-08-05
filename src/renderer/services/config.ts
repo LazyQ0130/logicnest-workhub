@@ -686,6 +686,7 @@ const hydrateStoredConfig = (storedConfig: AppConfig): AppConfig => {
     ),
     browserWebAccess: normalizeBrowserWebAccessConfig(storedConfig.browserWebAccess),
     notificationSettings: normalizeNotificationSettings(storedConfig.notificationSettings),
+    usageAnalyticsEnabled: false,
   });
 };
 
@@ -759,6 +760,7 @@ class ConfigService {
       notificationSettings: normalizeNotificationSettings(
         newConfig.notificationSettings ?? base.notificationSettings,
       ),
+      usageAnalyticsEnabled: false,
     } as AppConfig);
     await localStore.setItem(CONFIG_KEYS.APP_CONFIG, this.config);
     window.dispatchEvent(new CustomEvent('config-updated'));

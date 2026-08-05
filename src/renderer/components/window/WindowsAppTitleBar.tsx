@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect } from 'react';
 
+import { BRAND } from '../../../shared/brand';
 import ComposeIcon from '../icons/ComposeIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import WindowTitleBar from './WindowTitleBar';
@@ -69,7 +70,7 @@ const WindowsAppTitleBar: React.FC<WindowsAppTitleBarProps> = ({
             className="h-4 w-4 max-w-none shrink-0"
           />
           <span className={`${isSidebarCollapsed ? 'hidden' : 'truncate'} text-sm font-medium text-foreground`}>
-            LobsterAI
+            {BRAND.displayName}
           </span>
         </div>
         {(onToggleSidebar || onNewChat || updateBadge) && (

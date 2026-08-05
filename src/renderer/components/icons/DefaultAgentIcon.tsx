@@ -8,41 +8,36 @@ const DefaultAgentIcon: React.FC<{ className?: string }> = ({ className }) => (
     xmlns="http://www.w3.org/2000/svg"
     aria-hidden="true"
   >
-    <rect x="2" y="2" width="20" height="20" rx="6" fill="url(#default-agent-fill)" />
     <path
-      d="M8.45 8.15C7.2 7.8 5.9 8.75 5.62 10.48c-.25 1.58.52 2.82 1.62 2.82.7 0 1.25-.36 1.68-.96"
-      fill="white"
-      fillOpacity="0.96"
-    />
-    <path
-      d="M15.55 8.15c1.25-.35 2.55.6 2.83 2.33.25 1.58-.52 2.82-1.62 2.82-.7 0-1.25-.36-1.68-.96"
-      fill="white"
-      fillOpacity="0.96"
-    />
-    <path
-      d="M12 8.85c1.58 0 2.82 2.05 2.82 4.75v1.6c0 .44-.36.8-.8.8H9.98a.8.8 0 0 1-.8-.8v-1.6c0-2.7 1.24-4.75 2.82-4.75Z"
-      fill="white"
-      fillOpacity="0.96"
-    />
-    <path
-      d="M9.35 17.55h5.3"
-      stroke="white"
-      strokeWidth="1.3"
+      d="M7.1 5.8 3.7 3.5c-.2 1.7.3 3.2 1.3 4.3-.6 1-.9 2.1-.9 3.2 0 2.55 1.75 4.4 4.55 4.4 1.2 0 2.35-.35 3.35-1.1 1 .75 2.15 1.1 3.35 1.1 2.8 0 4.55-1.85 4.55-4.4 0-1.1-.3-2.2-.9-3.2 1-1.1 1.5-2.6 1.3-4.3l-3.4 2.3A8.7 8.7 0 0 0 12 4.5a8.7 8.7 0 0 0-4.9 1.3Z"
+      stroke="currentColor"
+      strokeWidth="1.35"
       strokeLinecap="round"
+      strokeLinejoin="round"
     />
+    <circle
+      cx="8.4"
+      cy="10.4"
+      r="2.55"
+      stroke="currentColor"
+      strokeWidth="1.35"
+    />
+    <circle
+      cx="15.6"
+      cy="10.4"
+      r="2.55"
+      stroke="currentColor"
+      strokeWidth="1.35"
+    />
+    <circle cx="8.4" cy="10.4" r="1.15" stroke="currentColor" strokeWidth="1.15" />
+    <circle cx="15.6" cy="10.4" r="1.15" stroke="currentColor" strokeWidth="1.15" />
     <path
-      d="M10.9 8.9c-.14-1.05-.62-1.92-1.5-2.55M13.1 8.9c.14-1.05.62-1.92 1.5-2.55"
-      stroke="white"
-      strokeWidth="1.05"
+      d="m11 12.6 1 1.5 1-1.5M8.1 15.35c-.65 1.15-.8 2.85-.25 4.1.6 1.4 2.05 2.05 4.15 2.05s3.55-.65 4.15-2.05c.55-1.25.4-2.95-.25-4.1M7.35 15.1c-1.4.5-2.25 1.85-2.25 3.35 0 1.25.55 2.25 1.25 2.65.65-.4 1.1-1.1 1.4-2.05M16.65 15.1c1.4.5 2.25 1.85 2.25 3.35 0 1.25-.55 2.25-1.25 2.65-.65-.4-1.1-1.1-1.4-2.05M9.4 21.15c-.45.85-1.3 1.2-1.85.75-.45-.4-.25-1.05.15-1.45M14.6 21.15c.45.85 1.3 1.2 1.85.75.45-.4.25-1.05-.15-1.45"
+      stroke="currentColor"
+      strokeWidth="1.2"
       strokeLinecap="round"
+      strokeLinejoin="round"
     />
-    <defs>
-      <linearGradient id="default-agent-fill" x1="4.2" y1="3.2" x2="20.2" y2="21.2" gradientUnits="userSpaceOnUse">
-        <stop stopColor="#ff7b58" />
-        <stop offset="0.46" stopColor="#ff3d24" />
-        <stop offset="1" stopColor="#d92216" />
-      </linearGradient>
-    </defs>
   </svg>
 );
 

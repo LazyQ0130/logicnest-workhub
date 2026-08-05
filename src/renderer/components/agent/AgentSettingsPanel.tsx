@@ -20,6 +20,7 @@ import { getAgentDisplayName, getAgentDisplayNameById, isDefaultAgentId } from '
 import { resolveOpenClawModelRef, toOpenClawModelRef } from '../../utils/openclawModelRef';
 import { getVisibleIMPlatforms } from '../../utils/regionFilter';
 import Modal from '../common/Modal';
+import DefaultAgentIcon from '../icons/DefaultAgentIcon';
 import TrashIcon from '../icons/TrashIcon';
 import AgentAvatarPicker from './AgentAvatarPicker';
 import AgentConfirmDialog from './AgentConfirmDialog';
@@ -652,7 +653,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
                 {i18nService.t(platform)}
               </div>
               <div className="text-xs text-secondary/50">
-                {i18nService.t('agentIMNotConfiguredHint') || 'Please configure in Settings > IM Bots first'}
+                {i18nService.t('agentIMNotConfiguredHint')}
               </div>
             </div>
           </div>
@@ -744,7 +745,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
             </div>
             {!configured && (
               <div className="text-xs text-secondary/50">
-                {i18nService.t('agentIMNotConfiguredHint') || 'Please configure in Settings > IM Bots first'}
+                {i18nService.t('agentIMNotConfiguredHint')}
               </div>
             )}
           </div>
@@ -776,7 +777,13 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
       >
         <div className="flex shrink-0 items-start justify-between gap-4 px-7 py-5">
           <div className="flex min-w-0 flex-1 items-start gap-3">
-            <AgentAvatarPicker value={icon} onChange={setIcon} />
+            {isMainAgent ? (
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center text-foreground">
+                <DefaultAgentIcon className="h-7 w-7" />
+              </span>
+            ) : (
+              <AgentAvatarPicker value={icon} onChange={setIcon} />
+            )}
             <div className="min-w-0 flex-1 pt-0.5">
               <input
                 type="text"

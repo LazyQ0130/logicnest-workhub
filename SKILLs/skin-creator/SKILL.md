@@ -1,6 +1,6 @@
 ---
 name: skin-creator
-description: Create and apply a two-asset LobsterAI visual skin from the user's style description. Use only when the AI Skin Designer kit supplies the structured skin_pack workflow marker; do not use for ordinary theme or image requests.
+description: Create and apply a two-asset LogicNest WorkHub visual skin from the user's style description. Use only when the AI Skin Designer kit supplies the structured skin_pack workflow marker; do not use for ordinary theme or image requests.
 official: true
 version: 0.2.0
 ---

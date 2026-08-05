@@ -15,12 +15,13 @@ import {
   type KitSkillMetadata,
   KitStoreKey,
 } from '../../shared/kit/constants';
+import { APP_NAME } from '../appConstants';
 import type { SqliteStore } from '../sqliteStore';
 import { ComputerUseRuntime } from './computerUseRuntime';
 
 const SKILLS_DIR_NAME = 'SKILLs';
 const SKILL_STATE_KEY = 'skills_state';
-const COMPUTER_USE_KIT_ICON_URL = 'https://ydhardwarecommon.nosdn.127.net/f02f8c2d2af8b1f88426327944f6e1f5.png';
+const COMPUTER_USE_KIT_ICON_URL = '';
 const COMPUTER_USE_MCP_REF = {
   id: ComputerUseKitId.BuiltIn,
   name: 'Computer Use',
@@ -41,7 +42,7 @@ export function buildComputerUseMarketplaceKit(): Record<string, unknown> {
     name: ComputerUseKitMetadata.Name,
     description: ComputerUseKitMetadata.Description,
     icon: COMPUTER_USE_KIT_ICON_URL,
-    author: 'LobsterAI',
+    author: APP_NAME,
     version: ComputerUseRuntime.Version,
     tryAsking: [
       {

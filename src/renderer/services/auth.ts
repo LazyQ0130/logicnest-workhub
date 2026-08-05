@@ -131,7 +131,7 @@ export function mapPricingCatalogTextModelsToServerModels(
     const modelName = readString(model.modelName) || modelId;
     const provider = readString(model.providerLabel)
       || readString(model.provider)
-      || 'LobsterAI';
+      || 'LogicNest WorkHub';
     const contextWindow = readPositiveNumber(model.contextWindow);
     const costMultiplier = readPositiveNumber(model.costMultiplier);
 

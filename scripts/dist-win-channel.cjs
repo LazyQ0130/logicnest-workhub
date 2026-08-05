@@ -48,7 +48,7 @@ if (normalizeKeyfrom(keyfrom) !== keyfrom) {
 const env = { ...process.env };
 for (const name of CHANNEL_SCOPED_ENV_VARS) {
   if (env[name] !== undefined) {
-    console.warn(`[ChannelBuild] ignoring inherited ${name}=${env[name]} from the shell`);
+    console.warn(`[ChannelBuild] ignoring inherited environment variable: name=${name} present=true`);
     delete env[name];
   }
 }

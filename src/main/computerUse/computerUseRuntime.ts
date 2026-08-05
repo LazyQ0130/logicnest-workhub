@@ -1,10 +1,10 @@
 import crypto from 'crypto';
-import { app, session } from 'electron';
+import { app } from 'electron';
 import extractZip from 'extract-zip';
 import fs from 'fs';
 import path from 'path';
-import { Readable } from 'stream';
-import { pipeline } from 'stream/promises';
+
+import { APP_NAME } from '../appConstants';
 
 export const ComputerUseRuntime = {
   Id: 'computer-use',
@@ -12,7 +12,7 @@ export const ComputerUseRuntime = {
   Platform: 'win32',
   Arch: 'x64',
   ArchiveName: 'lobsterai-computer-use-runtime-win-x64-1.0.7.zip',
-  DownloadUrl: 'https://ydhardwarebusiness.nosdn.127.net/806b908f1ba20905cc5c99495bccc69c.zip',
+  RemoteInstallEnabled: false,
   Sha256: 'd43c15cd69e10f0fbffe62f6c5ec947b4e61c5df84efbce46b6f73e28c9de30e',
   SizeBytes: 540139,
 } as const;
@@ -33,7 +33,7 @@ export const ComputerUseHelperConfig = {
   Direction: 'ltr',
   Locale: 'zh-CN',
   EscToCancel: '按 Esc 取消',
-  UsingComputer: 'LobsterAI正在使用你的电脑',
+  UsingComputer: `${APP_NAME}正在使用你的电脑`,
 } as const;
 export type ComputerUseHelperConfig =
   typeof ComputerUseHelperConfig[keyof typeof ComputerUseHelperConfig];
@@ -252,30 +252,9 @@ async function downloadRuntimeArchive(
   archivePath: string,
   onProgress?: (progress: ComputerUseRuntimeDownloadProgress) => void,
 ): Promise<void> {
-  const response = await session.defaultSession.fetch(ComputerUseRuntime.DownloadUrl);
-  if (!response.ok) {
-    throw new Error(`Computer Use runtime download failed with HTTP ${response.status}`);
-  }
-  if (!response.body) {
-    throw new Error('Computer Use runtime download returned an empty body');
-  }
-
-  const totalHeader = response.headers.get('content-length');
-  const total = totalHeader ? Number(totalHeader) : undefined;
-  let received = 0;
-  onProgress?.({ received, total, percent: total ? 0 : undefined });
-
-  await fs.promises.mkdir(path.dirname(archivePath), { recursive: true });
-  const nodeStream = Readable.fromWeb(response.body as any);
-  nodeStream.on('data', (chunk: Buffer) => {
-    received += chunk.length;
-    onProgress?.({
-      received,
-      total: total && Number.isFinite(total) ? total : undefined,
-      percent: total && Number.isFinite(total) ? received / total : undefined,
-    });
-  });
-  await pipeline(nodeStream, fs.createWriteStream(archivePath));
+  void archivePath;
+  void onProgress;
+  throw new Error('Computer Use runtime remote installation is disabled in this build.');
 }
 
 export async function installComputerUseRuntime(
@@ -288,6 +267,13 @@ export async function installComputerUseRuntime(
   const current = inspectComputerUseRuntime();
   if (current.paths) {
     return { success: true, paths: current.paths };
+  }
+
+  if (!ComputerUseRuntime.RemoteInstallEnabled) {
+    return {
+      success: false,
+      error: 'Computer Use runtime remote installation is disabled in this build.',
+    };
   }
 
   const baseDir = getComputerUseRuntimeBaseDir();

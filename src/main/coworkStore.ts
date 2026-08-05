@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { CoworkSystemMessageKind } from '../common/coworkSystemMessages';
 import { AgentId, normalizeAgentAvatarIcon } from '../shared/agent';
+import { DEFAULT_PROJECT_DIRECTORY } from '../shared/brand';
 import {
   COWORK_MESSAGE_PAGE_SIZE,
   COWORK_SESSION_PAGE_SIZE,
@@ -33,6 +34,10 @@ import type {
   ResolvedKitCapabilities,
 } from '../shared/kit/constants';
 import {
+  CoworkSessionScope,
+  type CoworkSessionScope as CoworkSessionScopeType,
+} from '../shared/meetingRoom/constants';
+import {
   ContinuityCapsuleSource,
   type CoworkContinuityCapsule,
 } from './libs/agentEngine/coworkContinuityCapsule';
@@ -40,10 +45,10 @@ import {
 
 // Default working directory for new users
 const getDefaultWorkingDirectory = (): string => {
-  return path.join(os.homedir(), 'lobsterai', 'project');
+  return path.join(os.homedir(), DEFAULT_PROJECT_DIRECTORY, 'project');
 };
 
-const TASK_WORKSPACE_CONTAINER_DIR = '.lobsterai-tasks';
+const TASK_WORKSPACE_CONTAINER_DIR = '.logicnest-tasks';
 
 const normalizeRecentWorkspacePath = (cwd: string): string => {
   const resolved = path.resolve(cwd);
@@ -490,6 +495,7 @@ export interface CoworkSession {
   executionMode: CoworkExecutionMode;
   activeSkillIds: string[];
   agentId: string;
+  scope: CoworkSessionScopeType;
   messages: CoworkMessage[];
   /** Offset of the first loaded message in the full message history. */
   messagesOffset: number;
@@ -841,7 +847,8 @@ export class CoworkStore {
     executionMode: CoworkExecutionMode = 'local',
     activeSkillIds: string[] = [],
     agentId: string = 'main',
-    modelOverride: string = ''
+    modelOverride: string = '',
+    scope: CoworkSessionScopeType = CoworkSessionScope.User,
   ): CoworkSession {
     const id = uuidv4();
     const now = Date.now();
@@ -849,8 +856,8 @@ export class CoworkStore {
     this.db
       .prepare(
         `
-      INSERT INTO cowork_sessions (id, title, claude_session_id, status, cwd, system_prompt, model_override, execution_mode, active_skill_ids, agent_id, pinned, created_at, updated_at)
-      VALUES (?, ?, NULL, 'idle', ?, ?, ?, ?, ?, ?, 0, ?, ?)
+      INSERT INTO cowork_sessions (id, title, claude_session_id, status, cwd, system_prompt, model_override, execution_mode, active_skill_ids, agent_id, pinned, scope, created_at, updated_at)
+      VALUES (?, ?, NULL, 'idle', ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
     `,
       )
       .run(
@@ -862,6 +869,7 @@ export class CoworkStore {
         executionMode,
         JSON.stringify(activeSkillIds),
         agentId,
+        scope,
         now,
         now,
       );
@@ -879,6 +887,7 @@ export class CoworkStore {
       executionMode,
       activeSkillIds,
       agentId,
+      scope,
       messages: [],
       messagesOffset: 0,
       totalMessages: 0,
@@ -908,6 +917,7 @@ export class CoworkStore {
       execution_mode?: string | null;
       active_skill_ids?: string | null;
       agent_id?: string | null;
+      scope?: string | null;
       goal_json?: string | null;
       created_at: number;
       updated_at: number;
@@ -915,7 +925,7 @@ export class CoworkStore {
 
     const row = this.getOne<SessionRow>(
       `
-      SELECT id, title, claude_session_id, status, pinned, pin_order, cwd, system_prompt, model_override, execution_mode, active_skill_ids, agent_id, goal_json, created_at, updated_at
+      SELECT id, title, claude_session_id, status, pinned, pin_order, cwd, system_prompt, model_override, execution_mode, active_skill_ids, agent_id, scope, goal_json, created_at, updated_at
       FROM cowork_sessions
       WHERE id = ?
     `,
@@ -954,6 +964,9 @@ export class CoworkStore {
       executionMode: (row.execution_mode as CoworkExecutionMode) || 'local',
       activeSkillIds,
       agentId: row.agent_id || 'main',
+      scope: row.scope === CoworkSessionScope.MeetingHidden
+        ? CoworkSessionScope.MeetingHidden
+        : CoworkSessionScope.User,
       messages,
       messagesOffset: messageOffset,
       totalMessages,
@@ -1425,8 +1438,8 @@ export class CoworkStore {
 
   listSessionIdsByAgent(agentId: string): string[] {
     const rows = this.getAll<{ id: string }>(
-      'SELECT id FROM cowork_sessions WHERE agent_id = ?',
-      [agentId],
+      'SELECT id FROM cowork_sessions WHERE agent_id = ? AND scope = ?',
+      [agentId, CoworkSessionScope.User],
     );
     return rows.map(row => row.id);
   }
@@ -1473,13 +1486,14 @@ export class CoworkStore {
 
   setSessionPinned(id: string, pinned: boolean): number | null {
     if (!pinned) {
-      this.db.prepare('UPDATE cowork_sessions SET pinned = 0, pin_order = NULL WHERE id = ?').run(id);
+      this.db.prepare('UPDATE cowork_sessions SET pinned = 0, pin_order = NULL WHERE id = ? AND scope = ?')
+        .run(id, CoworkSessionScope.User);
       return null;
     }
 
     const session = this.db
-      .prepare('SELECT agent_id FROM cowork_sessions WHERE id = ?')
-      .get(id) as { agent_id?: string | null } | undefined;
+      .prepare('SELECT agent_id FROM cowork_sessions WHERE id = ? AND scope = ?')
+      .get(id, CoworkSessionScope.User) as { agent_id?: string | null } | undefined;
     if (!session) {
       return null;
     }
@@ -1490,25 +1504,27 @@ export class CoworkStore {
         `
         SELECT MAX(pin_order) as max_pin_order
         FROM cowork_sessions
-        WHERE pinned = 1 AND COALESCE(NULLIF(TRIM(agent_id), ''), 'main') = ?
+        WHERE pinned = 1 AND scope = ?
+          AND COALESCE(NULLIF(TRIM(agent_id), ''), 'main') = ?
       `,
       )
-      .get(agentId) as { max_pin_order?: number | null } | undefined;
+      .get(CoworkSessionScope.User, agentId) as { max_pin_order?: number | null } | undefined;
     const pinOrder = (maxRow?.max_pin_order ?? 0) + 1;
     this.db
-      .prepare('UPDATE cowork_sessions SET pinned = 1, pin_order = ? WHERE id = ?')
-      .run(pinOrder, id);
+      .prepare('UPDATE cowork_sessions SET pinned = 1, pin_order = ? WHERE id = ? AND scope = ?')
+      .run(pinOrder, id, CoworkSessionScope.User);
     return pinOrder;
   }
 
   countSessions(agentId?: string): number {
     if (agentId) {
       const row = this.db
-        .prepare("SELECT COUNT(*) as count FROM cowork_sessions WHERE COALESCE(NULLIF(TRIM(agent_id), ''), 'main') = ?")
-        .get(agentId) as { count: number } | undefined;
+        .prepare("SELECT COUNT(*) as count FROM cowork_sessions WHERE scope = ? AND COALESCE(NULLIF(TRIM(agent_id), ''), 'main') = ?")
+        .get(CoworkSessionScope.User, agentId) as { count: number } | undefined;
       return row?.count || 0;
     }
-    const row = this.db.prepare('SELECT COUNT(*) as count FROM cowork_sessions').get() as
+    const row = this.db.prepare('SELECT COUNT(*) as count FROM cowork_sessions WHERE scope = ?')
+      .get(CoworkSessionScope.User) as
       | { count: number }
       | undefined;
     return row?.count || 0;
@@ -1524,14 +1540,14 @@ export class CoworkStore {
                goal_json,
                created_at, updated_at
         FROM cowork_sessions
-        WHERE COALESCE(NULLIF(TRIM(agent_id), ''), 'main') = ?
+        WHERE scope = ? AND COALESCE(NULLIF(TRIM(agent_id), ''), 'main') = ?
         ORDER BY pinned DESC,
           CASE WHEN pinned = 1 THEN COALESCE(pin_order, updated_at, created_at) END ASC,
           CASE WHEN pinned = 0 THEN updated_at END DESC,
           updated_at DESC
         LIMIT ? OFFSET ?
       `,
-        [agentId, limit, offset],
+        [CoworkSessionScope.User, agentId, limit, offset],
       );
     } else {
       rows = this.getAll<CoworkSessionSummaryRow>(
@@ -1541,13 +1557,14 @@ export class CoworkStore {
                goal_json,
                created_at, updated_at
         FROM cowork_sessions
+        WHERE scope = ?
         ORDER BY pinned DESC,
           CASE WHEN pinned = 1 THEN COALESCE(pin_order, updated_at, created_at) END ASC,
           CASE WHEN pinned = 0 THEN updated_at END DESC,
           updated_at DESC
         LIMIT ? OFFSET ?
       `,
-        [limit, offset],
+        [CoworkSessionScope.User, limit, offset],
       );
     }
 
@@ -1565,11 +1582,11 @@ export class CoworkStore {
           `
           SELECT COUNT(*) as count
           FROM cowork_sessions
-          WHERE title LIKE ? ESCAPE '\\'
+          WHERE scope = ? AND title LIKE ? ESCAPE '\\'
             AND COALESCE(NULLIF(TRIM(agent_id), ''), 'main') = ?
         `,
         )
-        .get(pattern, options.agentId) as { count: number } | undefined;
+        .get(CoworkSessionScope.User, pattern, options.agentId) as { count: number } | undefined;
       return row?.count || 0;
     }
 
@@ -1578,10 +1595,10 @@ export class CoworkStore {
         `
         SELECT COUNT(*) as count
         FROM cowork_sessions
-        WHERE title LIKE ? ESCAPE '\\'
+        WHERE scope = ? AND title LIKE ? ESCAPE '\\'
       `,
       )
-      .get(pattern) as { count: number } | undefined;
+      .get(CoworkSessionScope.User, pattern) as { count: number } | undefined;
     return row?.count || 0;
   }
 
@@ -1601,7 +1618,7 @@ export class CoworkStore {
                goal_json,
                created_at, updated_at
         FROM cowork_sessions
-        WHERE title LIKE ? ESCAPE '\\'
+        WHERE scope = ? AND title LIKE ? ESCAPE '\\'
           AND COALESCE(NULLIF(TRIM(agent_id), ''), 'main') = ?
         ORDER BY pinned DESC,
           CASE WHEN pinned = 1 THEN COALESCE(pin_order, updated_at, created_at) END ASC,
@@ -1609,7 +1626,7 @@ export class CoworkStore {
           updated_at DESC
         LIMIT ? OFFSET ?
       `,
-        [pattern, options.agentId, limit, offset],
+        [CoworkSessionScope.User, pattern, options.agentId, limit, offset],
       );
     } else {
       rows = this.getAll<CoworkSessionSummaryRow>(
@@ -1619,14 +1636,14 @@ export class CoworkStore {
                goal_json,
                created_at, updated_at
         FROM cowork_sessions
-        WHERE title LIKE ? ESCAPE '\\'
+        WHERE scope = ? AND title LIKE ? ESCAPE '\\'
         ORDER BY pinned DESC,
           CASE WHEN pinned = 1 THEN COALESCE(pin_order, updated_at, created_at) END ASC,
           CASE WHEN pinned = 0 THEN updated_at END DESC,
           updated_at DESC
         LIMIT ? OFFSET ?
       `,
-        [pattern, limit, offset],
+        [CoworkSessionScope.User, pattern, limit, offset],
       );
     }
 
@@ -1657,11 +1674,11 @@ export class CoworkStore {
       `
       SELECT cwd, updated_at
       FROM cowork_sessions
-      WHERE cwd IS NOT NULL AND TRIM(cwd) != ''
+      WHERE scope = ? AND cwd IS NOT NULL AND TRIM(cwd) != ''
       ORDER BY updated_at DESC
       LIMIT ?
     `,
-      [Math.max(limit * 8, limit)],
+      [CoworkSessionScope.User, Math.max(limit * 8, limit)],
     );
 
     const deduped: string[] = [];
@@ -1815,7 +1832,7 @@ export class CoworkStore {
       timestamp: row.created_at,
       preview: getCoworkRailPreview(
         row.preview_content,
-        row.type === 'user' ? `Turn ${index + 1}` : 'LobsterAI',
+        row.type === 'user' ? `Turn ${index + 1}` : 'LogicNest WorkHub',
         COWORK_RAIL_TOOLTIP_PREVIEW_MAX_LENGTH,
       ),
       contentLen: row.content_len,
@@ -2293,11 +2310,11 @@ export class CoworkStore {
     const rows = this.getAll<{ cwd: string }>(
       `
       SELECT cwd FROM cowork_sessions
-      WHERE cwd IS NOT NULL AND cwd != ''
+      WHERE scope = ? AND cwd IS NOT NULL AND cwd != ''
       GROUP BY cwd
       HAVING MAX(updated_at) >= ?
     `,
-      [sinceMs],
+      [CoworkSessionScope.User, sinceMs],
     );
     return rows.map(row => row.cwd);
   }
@@ -2779,7 +2796,7 @@ export class CoworkStore {
       SELECT m.session_id, s.title, s.updated_at, m.type, m.content, m.created_at
       FROM cowork_messages m
       INNER JOIN cowork_sessions s ON s.id = m.session_id
-      WHERE ${clauses.join(' AND ')}
+      WHERE s.scope = '${CoworkSessionScope.User}' AND ${clauses.join(' AND ')}
       ORDER BY m.created_at DESC
       LIMIT ?
     `,
@@ -2853,7 +2870,8 @@ export class CoworkStore {
       params.push(afterMs);
     }
 
-    const whereClause = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    clauses.unshift(`scope = '${CoworkSessionScope.User}'`);
+    const whereClause = `WHERE ${clauses.join(' AND ')}`;
 
     const rows = this.getAll<{
       id: string;

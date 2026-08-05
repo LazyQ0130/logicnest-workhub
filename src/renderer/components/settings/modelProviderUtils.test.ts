@@ -1,13 +1,18 @@
 import { expect, test } from 'vitest';
 
-import { OpenClawProviderId, ProviderAuthType, ProviderName } from '../../../shared/providers';
+import { OpenClawProviderId, ProviderAuthType, ProviderCategory, ProviderName } from '../../../shared/providers';
 import {
   buildOpenAIConnectionTestRequestBody,
+  filterProviderKeysBySearch,
+  findPreferredProviderForCategory,
+  getDefaultProviders,
   getOpenClawProviderIdForConfig,
+  getProviderKeysForCategory,
   hasEquivalentProviderModelId,
   hasProviderAuthConfigured,
   type ProviderConfig,
   providerRequiresApiKey,
+  type ProvidersConfig,
   shouldShowApiFormatSelector,
 } from './modelProviderUtils';
 
@@ -126,4 +131,71 @@ test('ordinary OpenAI-compatible connection tests retain their existing token fi
     messages: [{ role: 'user', content: 'Hi' }],
     max_tokens: 64,
   });
+});
+
+test('provider categories expose built-ins and custom providers in display order', () => {
+  const providers = {
+    ...getDefaultProviders(),
+    custom_2: providerConfig({ displayName: 'Second Custom' }),
+    custom_0: providerConfig({ displayName: 'First Custom' }),
+  } as ProvidersConfig;
+
+  expect(getProviderKeysForCategory(ProviderCategory.International, providers)).toEqual([
+    ProviderName.OpenAI,
+    ProviderName.Gemini,
+    ProviderName.Anthropic,
+    ProviderName.OpenRouter,
+    ProviderName.Xai,
+    ProviderName.Copilot,
+  ]);
+  expect(getProviderKeysForCategory(ProviderCategory.Domestic, providers)).toHaveLength(10);
+  expect(getProviderKeysForCategory(ProviderCategory.Local, providers)).toEqual([
+    ProviderName.Ollama,
+    ProviderName.LmStudio,
+  ]);
+  expect(getProviderKeysForCategory(ProviderCategory.Custom, providers)).toEqual([
+    'custom_0',
+    'custom_2',
+  ]);
+});
+
+test('category selection remembers a valid provider then falls back to enabled or first', () => {
+  const defaults = getDefaultProviders();
+  const providers = {
+    ...defaults,
+    [ProviderName.OpenAI]: providerConfig(),
+    [ProviderName.Gemini]: providerConfig({ apiKey: 'gemini-key' }),
+    [ProviderName.Anthropic]: providerConfig(),
+  } as ProvidersConfig;
+
+  expect(findPreferredProviderForCategory(
+    ProviderCategory.International,
+    providers,
+    ProviderName.Anthropic,
+  )).toBe(ProviderName.Anthropic);
+  expect(findPreferredProviderForCategory(
+    ProviderCategory.International,
+    providers,
+  )).toBe(ProviderName.Gemini);
+
+  const disabledProviders = {
+    ...providers,
+    [ProviderName.Gemini]: providerConfig({ enabled: false, apiKey: '' }),
+  } as ProvidersConfig;
+  expect(findPreferredProviderForCategory(
+    ProviderCategory.International,
+    disabledProviders,
+  )).toBe(ProviderName.OpenAI);
+});
+
+test('provider search filters only the supplied category keys', () => {
+  const providers = {
+    ...getDefaultProviders(),
+    custom_0: providerConfig({ displayName: 'Private Gateway' }),
+  } as ProvidersConfig;
+
+  const international = getProviderKeysForCategory(ProviderCategory.International, providers);
+  expect(filterProviderKeysBySearch(international, providers, 'gem')).toEqual([ProviderName.Gemini]);
+  expect(filterProviderKeysBySearch(international, providers, 'deepseek')).toEqual([]);
+  expect(filterProviderKeysBySearch(['custom_0'], providers, 'private')).toEqual(['custom_0']);
 });

@@ -433,8 +433,8 @@ describe('registerScheduledTaskHandlers', () => {
           getSessionMapping: () => undefined,
           listSessionMappings: () => [
             {
-              imConversationId: 'popo-bot-1:direct:zhangsan@corp.example.com',
-              platform: 'popo',
+              imConversationId: 'dingtalk-bot-1:direct:zhangsan',
+              platform: 'dingtalk',
               coworkSessionId: 'cw-1',
               agentId: 'f15e78b0-agent',
               lastActiveAt: '2',
@@ -448,15 +448,15 @@ describe('registerScheduledTaskHandlers', () => {
 
     const handler = registeredHandlers.get(ScheduledTaskIpc.Create);
     await handler?.(undefined, {
-      name: '测试 popo',
+      name: '测试 dingtalk',
       enabled: true,
       schedule: { kind: 'cron', expr: '0 13 * * *' },
       payload: { kind: PayloadKind.AgentTurn, message: 'hi' },
       delivery: {
         mode: DeliveryMode.Announce,
-        channel: 'moltbot-popo',
-        to: 'popo-bot-1:direct:zhangsan@corp.example.com',
-        accountId: 'popo-bot-1',
+        channel: 'dingtalk-connector',
+        to: 'dingtalk-bot-1:direct:zhangsan',
+        accountId: 'dingtalk-bot-1',
       },
     });
 
@@ -468,10 +468,31 @@ describe('registerScheduledTaskHandlers', () => {
     expect(input.agentId).toBe('f15e78b0-agent');
     expect(input.delivery).toEqual({
       mode: DeliveryMode.Announce,
-      channel: 'moltbot-popo',
-      to: 'zhangsan@corp.example.com',
-      accountId: 'popo-bot-1',
+      channel: 'dingtalk-connector',
+      to: 'zhangsan',
+      accountId: 'dingtalk-bot-1',
     });
+  });
+
+  test('rejects new scheduled delivery to a retired message channel', async () => {
+    const { cronJobService, deps } = makeDeps();
+    registerScheduledTaskHandlers(deps);
+
+    const handler = registeredHandlers.get(ScheduledTaskIpc.Create);
+    const result = await handler?.(undefined, {
+      name: 'legacy delivery',
+      enabled: true,
+      schedule: { kind: 'cron', expr: '0 13 * * *' },
+      payload: { kind: PayloadKind.AgentTurn, message: 'hi' },
+      delivery: {
+        mode: DeliveryMode.Announce,
+        channel: 'telegram',
+        to: '123',
+      },
+    });
+
+    expect(result?.success).toBe(false);
+    expect(cronJobService.addJob).not.toHaveBeenCalled();
   });
 
   test('binds the job to the selected bot agent for account-less group IM targets', async () => {

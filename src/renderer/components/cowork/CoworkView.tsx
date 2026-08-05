@@ -1,4 +1,4 @@
-import { ArrowPathIcon, ExclamationTriangleIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
+import { ArrowPathIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import type { CoworkBrowserAnnotationMessageBatch } from '@shared/cowork/browserAnnotations';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
@@ -35,7 +35,6 @@ import {
 import type { MediaAttachmentRef } from '../../types/mediaGeneration';
 import { applyOptimisticGoalCommand } from '../../utils/goalCommand';
 import { toOpenClawModelRef } from '../../utils/openclawModelRef';
-import CreditsResetCampaignFloat from '../CreditsResetCampaignFloat';
 import ComposeIcon from '../icons/ComposeIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import { PromptPanel, QuickActionBar } from '../quick-actions';
@@ -743,14 +742,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({
           </div>
         )}
       </div>
-      <div className="non-draggable flex items-center">
-        <div className="flex items-center gap-1.5 mr-2 px-2.5 py-1">
-          <ShieldCheckIcon className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
-          <span className="text-xs text-green-600 dark:text-green-400 whitespace-nowrap">
-            {i18nService.t('lobsterGuardEnabled')}
-          </span>
-        </div>
-      </div>
     </div>
   );
 
@@ -887,9 +878,12 @@ const CoworkView: React.FC<CoworkViewProps> = ({
 
               {/* Quick Actions */}
               <div
-                className="relative z-0 mt-8 flex w-full max-w-3xl flex-col items-center animate-fade-in-up"
+                className="relative z-0 mt-8 flex w-full max-w-3xl flex-col animate-fade-in-up"
                 style={{ animationDelay: '260ms', animationFillMode: 'both' }}
               >
+                <h3 className="mb-3 px-1 text-xs font-medium tracking-wide text-secondary">
+                  {i18nService.t('commonWork')}
+                </h3>
                 <QuickActionBar
                   actions={quickActions}
                   selectedActionId={selectedActionId}
@@ -904,7 +898,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({
                     />
                   </div>
                 )}
-                <CreditsResetCampaignFloat />
               </div>
 
               <div aria-hidden="true" className="w-full min-h-[24px] flex-[3_0_0px]" />

@@ -38,8 +38,7 @@ const DEFINITIONS = [
     channel: 'openclaw-weixin',
     channelAliases: [],
     logo: 'weixin.png',
-    guideUrl:
-      'https://lobsterai.youdao.com/#/docs/lobsterai_im_bot_config_guide/%E5%BE%AE%E4%BF%A1-im-%E6%9C%BA%E5%99%A8%E4%BA%BA%E9%85%8D%E7%BD%AE',
+    guideUrl: '',
   },
   {
     id: 'dingtalk',
@@ -48,8 +47,7 @@ const DEFINITIONS = [
     channel: 'dingtalk-connector',
     channelAliases: ['dingtalk'],
     logo: 'dingding.png',
-    guideUrl:
-      'https://lobsterai.youdao.com/#/docs/lobsterai_im_bot_config_guide/%E9%92%89%E9%92%89-im-%E6%9C%BA%E5%99%A8%E4%BA%BA%E9%85%8D%E7%BD%AE',
+    guideUrl: '',
   },
   {
     id: 'feishu',
@@ -58,8 +56,7 @@ const DEFINITIONS = [
     channel: 'feishu',
     channelAliases: [],
     logo: 'feishu.png',
-    guideUrl:
-      'https://lobsterai.youdao.com/#/docs/lobsterai_im_bot_config_guide/%E9%A3%9E%E4%B9%A6-im-%E6%9C%BA%E5%99%A8%E4%BA%BA%E9%85%8D%E7%BD%AE',
+    guideUrl: '',
   },
   {
     id: 'wecom',
@@ -68,8 +65,7 @@ const DEFINITIONS = [
     channel: 'wecom',
     channelAliases: ['wecom-openclaw-plugin'],
     logo: 'wecom.png',
-    guideUrl:
-      'https://lobsterai.youdao.com/#/docs/lobsterai_im_bot_config_guide/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A1%E6%9C%BA%E5%99%A8%E4%BA%BA%E9%85%8D%E7%BD%AE',
+    guideUrl: '',
   },
   {
     id: 'qq',
@@ -78,72 +74,41 @@ const DEFINITIONS = [
     channel: 'qqbot',
     channelAliases: [],
     logo: 'qq_bot.jpeg',
-    guideUrl: 'https://lobsterai.youdao.com/#/docs/lobsterai_im_bot_config_guide/qqqq-bot',
-  },
-  {
-    id: 'nim',
-    label: 'NIM',
-    region: 'china',
-    channel: 'nim',
-    channelAliases: [],
-    logo: 'nim.png',
-    guideUrl: '',
-  },
-  {
-    id: 'netease-bee',
-    label: 'NetEase Bee',
-    region: 'china',
-    channel: 'netease-bee',
-    channelAliases: [],
-    logo: 'netease-bee.png',
-    guideUrl: '',
-  },
-  {
-    id: 'popo',
-    label: 'POPO',
-    region: 'china',
-    channel: 'moltbot-popo',
-    channelAliases: ['popo'],
-    logo: 'popo.png',
-    guideUrl: '',
-  },
-  // ── Global ──
-  {
-    id: 'telegram',
-    label: 'Telegram',
-    region: 'global',
-    channel: 'telegram',
-    channelAliases: [],
-    logo: 'telegram.svg',
-    guideUrl:
-      'https://lobsterai.youdao.com/#/en/docs/lobsterai_im_bot_config_guide/telegram-bot-configuration',
-  },
-  {
-    id: 'discord',
-    label: 'Discord',
-    region: 'global',
-    channel: 'discord',
-    channelAliases: [],
-    logo: 'discord.svg',
-    guideUrl:
-      'https://lobsterai.youdao.com/#/en/docs/lobsterai_im_bot_config_guide/discord-bot-configuration',
-  },
-  {
-    id: 'email',
-    label: 'Email',
-    region: 'china',
-    channel: 'email',
-    channelAliases: ['clawemail', 'clawemail-email'],
-    logo: 'email.svg',
     guideUrl: '',
   },
 ] as const satisfies readonly PlatformDefInput[];
+
+const RETIRED_CHANNELS = new Set([
+  'nim',
+  'netease-bee',
+  'popo',
+  'moltbot-popo',
+  'telegram',
+  'discord',
+  'email',
+  'clawemail',
+  'clawemail-email',
+]);
 
 // ═══════════════════════════════════════════════════════
 // 3. Derived Types
 // ═══════════════════════════════════════════════════════
 
-export type Platform = (typeof DEFINITIONS)[number]['id'];
+export type ActivePlatform = (typeof DEFINITIONS)[number]['id'];
+/**
+ * Persisted platform identifiers from releases that exposed additional
+ * message channels. They remain readable so existing rows and scheduled-task
+ * history are not destroyed, but they are intentionally absent from the
+ * active registry and can no longer be started or selected.
+ */
+export type LegacyPlatform =
+  | 'nim'
+  | 'netease-bee'
+  | 'popo'
+  | 'telegram'
+  | 'discord'
+  | 'email';
+export type Platform = ActivePlatform | LegacyPlatform;
 export type ChannelName =
   | (typeof DEFINITIONS)[number]['channel']
   | (typeof DEFINITIONS)[number]['channelAliases'][number];
@@ -154,7 +119,7 @@ export type ChannelName =
 
 export interface PlatformDef {
   /** Internal platform identifier */
-  readonly id: Platform;
+  readonly id: ActivePlatform;
   /** UI display name (for non-i18n contexts like scheduled task dropdowns) */
   readonly label: string;
   /** Region grouping */
@@ -175,17 +140,17 @@ export interface PlatformDef {
 
 class PlatformRegistryImpl {
   private readonly defs: readonly PlatformDef[];
-  private readonly platformIndex: ReadonlyMap<Platform, PlatformDef>;
+  private readonly platformIndex: ReadonlyMap<ActivePlatform, PlatformDef>;
   private readonly channelIndex: ReadonlyMap<string, PlatformDef>;
-  private readonly _platforms: readonly Platform[];
+  private readonly _platforms: readonly ActivePlatform[];
   private readonly _channelSet: ReadonlySet<string>;
 
   constructor(definitions: readonly PlatformDef[]) {
     this.defs = definitions;
 
-    const pIdx = new Map<Platform, PlatformDef>();
+    const pIdx = new Map<ActivePlatform, PlatformDef>();
     const cIdx = new Map<string, PlatformDef>();
-    const platforms: Platform[] = [];
+    const platforms: ActivePlatform[] = [];
     const channels = new Set<string>();
 
     for (const def of definitions) {
@@ -210,12 +175,12 @@ class PlatformRegistryImpl {
   // ── Platform Lists ──
 
   /** All platform ids. Array order = UI display order. */
-  get platforms(): readonly Platform[] {
+  get platforms(): readonly ActivePlatform[] {
     return this._platforms;
   }
 
   /** Platforms filtered by region, preserving definition order. */
-  platformsByRegion(region: 'china' | 'global'): readonly Platform[] {
+  platformsByRegion(region: 'china' | 'global'): readonly ActivePlatform[] {
     return this.defs.filter(d => d.region === region).map(d => d.id);
   }
 
@@ -223,34 +188,43 @@ class PlatformRegistryImpl {
 
   /** Get the full definition for a platform. */
   get(platform: Platform): PlatformDef {
-    return this.platformIndex.get(platform)!;
+    return this.platformIndex.get(platform as ActivePlatform)!;
   }
 
   /** Logo filename relative to /im-logos/. */
   logo(platform: Platform): string {
-    return this.platformIndex.get(platform)!.logo;
+    return this.platformIndex.get(platform as ActivePlatform)!.logo;
   }
 
   /** Setup guide URL (empty string if not available). */
   guideUrl(platform: Platform): string {
-    return this.platformIndex.get(platform)!.guideUrl;
+    return this.platformIndex.get(platform as ActivePlatform)!.guideUrl;
   }
 
   /** Primary OpenClaw channel for a platform. */
   channelOf(platform: Platform): ChannelName {
-    return this.platformIndex.get(platform)!.channel;
+    return this.platformIndex.get(platform as ActivePlatform)!.channel;
   }
 
   // ── Channel Queries ──
 
   /** Resolve a channel string to its platform. Returns undefined for unknown channels. */
-  platformOfChannel(channel: string): Platform | undefined {
+  platformOfChannel(channel: string): ActivePlatform | undefined {
     return this.channelIndex.get(channel)?.id;
   }
 
   /** Check if a string is a known IM channel. */
   isIMChannel(channel: string): boolean {
     return this._channelSet.has(channel);
+  }
+
+  isActivePlatform(platform: string): platform is ActivePlatform {
+    return this.platformIndex.has(platform as ActivePlatform);
+  }
+
+  /** Retired channel ids remain recognizable only to disable legacy data safely. */
+  isRetiredIMChannel(channel: string): boolean {
+    return RETIRED_CHANNELS.has(channel);
   }
 
   // ── UI Helpers ──

@@ -1,7 +1,5 @@
 'use strict';
 
-const path = require('path');
-
 const config = require('../electron-builder.json');
 const { BuildEnv } = require('./build-env.cjs');
 const { readBuildKeyfrom } = require('./build-keyfrom.cjs');
@@ -95,26 +93,27 @@ for (const platformName of ['mac', 'win', 'linux']) {
   mergeExtraResources(platformName);
 }
 
-// Sign every Windows binary electron-builder produces (LobsterAI.exe, the
-// uninstaller, the installer) through the internal Youdao signing service,
-// not just the final Setup.exe: the unsigned inner exe is what security
-// software freezes on first execution. The hook skips with a warning when
-// YD_SIGN_* credentials are absent, so local packaging still works.
-config.win = {
-  ...config.win,
-  sign: path.join(__dirname, 'win-sign.cjs'),
-};
+// Unsigned development builds use an explicit no-op signer so electron-builder
+// does not download its cross-platform signing bundle (which contains macOS
+// symlinks that cannot be extracted on locked-down Windows hosts). This flag is
+// never implicit: production CI must omit it and configure its trusted signer.
+if (process.env.LOGICNEST_UNSIGNED_BUILD === '1') {
+  config.win = {
+    ...(config.win || {}),
+    sign: './scripts/win-sign-unsigned.cjs',
+  };
+}
 
 delete config.extraResources;
 
 config.dmg = {
   ...(config.dmg || {}),
-  artifactName: `LobsterAI-darwin-\${arch}-\${version}-${keyfrom}.\${ext}`,
+  artifactName: `LogicNestWorkHub-darwin-\${arch}-\${version}-${keyfrom}.\${ext}`,
 };
 
 config.nsis = {
   ...(config.nsis || {}),
-  artifactName: `LobsterAI-Setup-\${arch}-\${version}-${keyfrom}.\${ext}`,
+  artifactName: `LogicNestWorkHub-Setup-\${arch}-\${version}-${keyfrom}.\${ext}`,
 };
 
 if (isWebInstallerEnabled()) {
@@ -127,7 +126,7 @@ if (isWebInstallerEnabled()) {
   };
   config.nsisWeb = {
     appPackageUrl: resolveWebPackageUrl(keyfrom),
-    artifactName: `LobsterAI-WebSetup-\${arch}-\${version}-${keyfrom}.\${ext}`,
+    artifactName: `LogicNestWorkHub-WebSetup-\${arch}-\${version}-${keyfrom}.\${ext}`,
   };
   console.log(`[WebInstaller] nsis-web target enabled, app package url: ${config.nsisWeb.appPackageUrl}`);
 }

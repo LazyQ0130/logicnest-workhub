@@ -59,6 +59,7 @@ function setupDb(): void {
       fork_git_branch TEXT,
       fork_git_base_ref TEXT,
       goal_json TEXT,
+      scope TEXT NOT NULL DEFAULT 'user',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );

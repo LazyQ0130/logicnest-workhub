@@ -65,7 +65,7 @@ if (pkgUrl && pkgBaseUrl) {
 const env = { ...process.env };
 for (const name of CHANNEL_SCOPED_ENV_VARS) {
   if (env[name] !== undefined) {
-    console.warn(`[WebBuild] ignoring inherited ${name}=${env[name]} from the shell`);
+    console.warn(`[WebBuild] ignoring inherited environment variable: name=${name} present=true`);
     delete env[name];
   }
 }
@@ -111,7 +111,7 @@ if (stubOnly) {
 
 const mode = stubOnly ? 'stub-only' : usesPlaceholder ? 'full-build-with-placeholder-url' : 'full-build-with-base-url';
 console.log(`[WebBuild] keyfrom=${keyfrom} mode=${mode}`);
-console.log(`[WebBuild] package ${stubOnly ? 'url' : 'base url'}: ${stubOnly ? pkgUrl : env[BuildEnv.WebPkgBaseUrl]}`);
+console.log(`[WebBuild] package location configured: name=${stubOnly ? BuildEnv.WebPkgUrl : BuildEnv.WebPkgBaseUrl} present=true count=1`);
 if (usesPlaceholder) {
   console.log('[WebBuild] no URL flag given: building with a placeholder so the .nsis.7z can be uploaded first.');
 }

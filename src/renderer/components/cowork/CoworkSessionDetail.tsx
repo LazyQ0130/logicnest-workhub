@@ -444,9 +444,15 @@ const buildRailItems = (
       messageId: primaryMessageId,
       turnIndex: index,
       absoluteIndex: messageOffsetById.get(primaryMessageId) ?? items.length,
-      label: turn.userMessage ? getRailLabel(userContent, `Turn ${index + 1}`) : 'LobsterAI',
+      label: turn.userMessage
+        ? getRailLabel(userContent, `Turn ${index + 1}`)
+        : i18nService.t('cowork'),
       summary: assistantContent
-        ? getRailLabel(assistantContent, 'LobsterAI', COWORK_RAIL_TOOLTIP_PREVIEW_MAX_LENGTH)
+        ? getRailLabel(
+          assistantContent,
+          i18nService.t('cowork'),
+          COWORK_RAIL_TOOLTIP_PREVIEW_MAX_LENGTH,
+        )
         : '',
       contentLen: userContent.length + assistantContent.length,
       isUser: false,
@@ -514,7 +520,7 @@ const buildRailItemsFromIndex = (
       messageId: current.messageId,
       turnIndex: loadedTurnIndex,
       absoluteIndex: current.messageOffset,
-      label: 'LobsterAI',
+      label: i18nService.t('cowork'),
       summary: current.preview,
       contentLen: current.contentLen,
       isUser: false,
@@ -1008,11 +1014,11 @@ const composeExportCanvas = async (
 
   ctx.fillStyle = brandColor;
   ctx.font = `600 ${brandFontSize}px ${fontStack}`;
-  ctx.fillText('LobsterAI — 全场景个人助理 Agent', textX, footerCenterY - taglineFontSize / 2 - 2);
+  ctx.fillText(i18nService.t('shareCardBrandTagline'), textX, footerCenterY - taglineFontSize / 2 - 2);
 
   ctx.fillStyle = subtitleColor;
   ctx.font = `400 ${taglineFontSize}px ${fontStack}`;
-  ctx.fillText('7×24 小时帮你干活的全场景个人助理，由网易有道开发', textX, footerCenterY + brandFontSize / 2 + 3);
+  ctx.fillText(i18nService.t('shareCardBrandByline'), textX, footerCenterY + brandFontSize / 2 + 3);
 
   ctx.restore(); // card clip
 

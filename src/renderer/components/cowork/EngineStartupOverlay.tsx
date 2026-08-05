@@ -4,6 +4,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { coworkService } from '../../services/cowork';
 import { i18nService } from '../../services/i18n';
 import type { OpenClawEngineStatus } from '../../types/cowork';
+import {
+  EngineStartupPresentation,
+  resolveEngineStartupPresentation,
+} from './engineStartupPresentation';
 
 const TIP_KEYS = [
   'engineStartingTip1',
@@ -87,6 +91,7 @@ const EngineStartupOverlay: React.FC<EngineStartupOverlayProps> = ({ bootstrappi
   });
   const [showSlowHint, setShowSlowHint] = useState(false);
   const hasRotatedTipRef = useRef(false);
+  const hasReachedRunningRef = useRef(status?.phase === 'running');
 
   useEffect(() => {
     coworkService.getOpenClawEngineStatus()
@@ -102,11 +107,21 @@ const EngineStartupOverlay: React.FC<EngineStartupOverlayProps> = ({ bootstrappi
     return unsubscribe;
   }, []);
 
-  const isStarting = status?.phase === 'starting';
-  const visible = bootstrapping || isStarting;
+  useEffect(() => {
+    if (status?.phase === 'running') {
+      hasReachedRunningRef.current = true;
+    }
+  }, [status?.phase]);
 
-  // Fade in only when the overlay appears mid-session (e.g. engine restart),
-  // not on app start where the static splash / bootstrap tree already showed it.
+  const presentation = resolveEngineStartupPresentation({
+    bootstrapping,
+    phase: status?.phase,
+    hasReachedRunning: hasReachedRunningRef.current,
+  });
+  const visible = presentation === EngineStartupPresentation.ColdStart;
+
+  // The static splash already covers app startup, so its React handoff should
+  // not fade in again.
   const wasVisibleRef = useRef(overlayWasVisible);
   const animateIn = visible && !wasVisibleRef.current;
   wasVisibleRef.current = visible;
@@ -156,6 +171,22 @@ const EngineStartupOverlay: React.FC<EngineStartupOverlayProps> = ({ bootstrappi
     setTipIndex(idx);
   };
 
+  if (presentation === EngineStartupPresentation.Reconnecting) {
+    return (
+      <div
+        className="pointer-events-none fixed bottom-4 right-4 z-[100] flex items-center gap-2.5 rounded-lg border border-border bg-surface-raised px-3.5 py-2.5 text-sm text-foreground shadow-sm"
+        role="status"
+        aria-live="polite"
+      >
+        <span
+          className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-border border-t-foreground"
+          aria-hidden="true"
+        />
+        {i18nService.t('coworkOpenClawStarting')}
+      </div>
+    );
+  }
+
   if (!visible) {
     return null;
   }
@@ -166,20 +197,13 @@ const EngineStartupOverlay: React.FC<EngineStartupOverlayProps> = ({ bootstrappi
 
   return (
     <div className={`fixed inset-0 z-[100] flex items-center justify-center bg-surface ${animateIn ? 'animate-fade-in' : ''}`}>
-      {/* brand gradient, same as WelcomeDialog */}
-      <div
-        className="absolute inset-0"
-        style={{ background: 'linear-gradient(360deg, rgba(255, 0, 77, 0) 5.5%, rgba(255, 0, 77, 0.05) 100%)' }}
-        aria-hidden="true"
-      />
-
       <div className="relative z-10 flex w-[420px] flex-col items-center px-6" role="status">
         {/* logo with breathing glow */}
         <div className="relative mb-5">
-          <div className="absolute -inset-2 rounded-3xl bg-primary/20 blur-xl animate-pulse" aria-hidden="true" />
+          <div className="absolute -inset-2 rounded-3xl bg-foreground/[0.06] blur-xl animate-pulse" aria-hidden="true" />
           <img
             src="logo.png"
-            alt="LobsterAI"
+            alt={i18nService.t('logicnestLicenseTitle')}
             width={72}
             height={72}
             className="relative rounded-2xl select-none"

@@ -4,21 +4,25 @@
  *
  * Log file locations:
  *   macOS:   ~/Library/Logs/LobsterAI/main-YYYY-MM-DD.log
- *   Windows: %USERPROFILE%\AppData\Roaming\LobsterAI\logs\main-YYYY-MM-DD.log
- *   Linux:   ~/.config/LobsterAI/logs/main-YYYY-MM-DD.log
+ *   Windows: %APPDATA%\逻栖工枢\logs\main-YYYY-MM-DD.log
+ *   Linux:   ~/.config/逻栖工枢/logs/main-YYYY-MM-DD.log
  *
  * Rotation policy:
  *   - Daily log files (one file per calendar day)
- *   - Max 80 MB per file; on overflow electron-log rotates to .old.log
+ *   - Max 10 MB per file; on overflow electron-log rotates to .old.log
  *   - Files older than 7 days are pruned on startup
  */
 
-import path from 'path';
-import fs from 'fs';
 import log from 'electron-log/main';
+import fs from 'fs';
+import path from 'path';
+
+import { APP_NAME } from './appConstants';
+import { ProcessConsoleStream, ProcessStreamHealth } from './libs/processStreamSafety';
+import { sanitizeForLog } from './libs/sanitizeForLog';
 
 const LOG_RETENTION_DAYS = 7;
-const LOG_MAX_SIZE = 80 * 1024 * 1024; // 80 MB
+const LOG_MAX_SIZE = 10 * 1024 * 1024;
 
 /** Captured on first resolvePathFn call; used for pruning and export. */
 let _logDir: string | undefined;
@@ -60,26 +64,58 @@ export function initLogger(): void {
   const originalWarn = console.warn;
   const originalInfo = console.info;
   const originalDebug = console.debug;
+  const streamHealth = new ProcessStreamHealth();
+
+  const reportStreamError = (stream: ProcessConsoleStream, error: unknown): void => {
+    if (streamHealth.markError(stream, error)) {
+      log.warn(`[Logger] ${stream} closed with EPIPE; console forwarding is disabled for this process.`);
+      return;
+    }
+    if (streamHealth.canWrite(stream)) {
+      log.error(`[Logger] ${stream} emitted an unexpected error.`, sanitizeForLog(error));
+    }
+  };
+
+  const forwardToConsole = (
+    stream: ProcessConsoleStream,
+    original: (...args: unknown[]) => void,
+    args: unknown[],
+  ): void => {
+    if (!streamHealth.canWrite(stream)) return;
+    try {
+      original.apply(console, args);
+    } catch (error) {
+      reportStreamError(stream, error);
+    }
+  };
+
+  process.stdout?.on('error', error => reportStreamError(ProcessConsoleStream.Stdout, error));
+  process.stderr?.on('error', error => reportStreamError(ProcessConsoleStream.Stderr, error));
 
   console.log = (...args: any[]) => {
-    originalLog.apply(console, args);
-    log.info(...args);
+    const safeArgs = args.map(sanitizeForLog);
+    forwardToConsole(ProcessConsoleStream.Stdout, originalLog, safeArgs);
+    log.info(...safeArgs);
   };
   console.error = (...args: any[]) => {
-    originalError.apply(console, args);
-    log.error(...args);
+    const safeArgs = args.map(sanitizeForLog);
+    forwardToConsole(ProcessConsoleStream.Stderr, originalError, safeArgs);
+    log.error(...safeArgs);
   };
   console.warn = (...args: any[]) => {
-    originalWarn.apply(console, args);
-    log.warn(...args);
+    const safeArgs = args.map(sanitizeForLog);
+    forwardToConsole(ProcessConsoleStream.Stderr, originalWarn, safeArgs);
+    log.warn(...safeArgs);
   };
   console.info = (...args: any[]) => {
-    originalInfo.apply(console, args);
-    log.info(...args);
+    const safeArgs = args.map(sanitizeForLog);
+    forwardToConsole(ProcessConsoleStream.Stdout, originalInfo, safeArgs);
+    log.info(...safeArgs);
   };
   console.debug = (...args: any[]) => {
-    originalDebug.apply(console, args);
-    log.debug(...args);
+    const safeArgs = args.map(sanitizeForLog);
+    forwardToConsole(ProcessConsoleStream.Stdout, originalDebug, safeArgs);
+    log.debug(...safeArgs);
   };
 
   // Disable electron-log's own console transport to avoid double printing
@@ -91,7 +127,7 @@ export function initLogger(): void {
 
   // Log startup marker
   log.info('='.repeat(60));
-  log.info(`LobsterAI started (${process.platform} ${process.arch})`);
+  log.info(`${APP_NAME} started (${process.platform} ${process.arch})`);
   log.info('='.repeat(60));
 }
 

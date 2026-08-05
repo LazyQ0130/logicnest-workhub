@@ -46,6 +46,42 @@ export const ProviderName = {
 } as const;
 export type ProviderName = typeof ProviderName[keyof typeof ProviderName];
 
+export const ProviderCategory = {
+  International: 'international',
+  Domestic: 'domestic',
+  Local: 'local',
+  Custom: 'custom',
+} as const;
+export type ProviderCategory = typeof ProviderCategory[keyof typeof ProviderCategory];
+
+const PROVIDER_IDS_BY_CATEGORY = {
+  [ProviderCategory.International]: [
+    ProviderName.OpenAI,
+    ProviderName.Gemini,
+    ProviderName.Anthropic,
+    ProviderName.OpenRouter,
+    ProviderName.Xai,
+    ProviderName.Copilot,
+  ],
+  [ProviderCategory.Domestic]: [
+    ProviderName.DeepSeek,
+    ProviderName.Moonshot,
+    ProviderName.Qwen,
+    ProviderName.Zhipu,
+    ProviderName.Minimax,
+    ProviderName.Volcengine,
+    ProviderName.Youdaozhiyun,
+    ProviderName.Qianfan,
+    ProviderName.StepFun,
+    ProviderName.Xiaomi,
+  ],
+  [ProviderCategory.Local]: [
+    ProviderName.Ollama,
+    ProviderName.LmStudio,
+  ],
+  [ProviderCategory.Custom]: [],
+} as const satisfies Record<ProviderCategory, readonly ProviderName[]>;
+
 // ─── OpenClaw Provider ID ───────────────────────────────────────────────
 // OpenClaw gateway provider identifiers. May differ from ProviderName.
 export const OpenClawProviderId = {
@@ -351,10 +387,10 @@ const PROVIDER_DEFINITIONS = [
   {
     id: ProviderName.Youdaozhiyun,
     label: 'Youdao',
-    website: 'https://ai.youdao.com',
-    apiKeyUrl: 'https://ai.youdao.com/console',
+    website: '',
+    apiKeyUrl: '',
     openClawProviderId: OpenClawProviderId.Youdaozhiyun,
-    defaultBaseUrl: 'https://openapi.youdao.com/llmgateway/api/v1/chat/completions',
+    defaultBaseUrl: 'http://127.0.0.1:1/disabled-provider',
     defaultApiFormat: ApiFormat.OpenAI,
     codingPlanSupported: false,
     region: 'china',
@@ -686,6 +722,25 @@ class ProviderRegistryImpl {
   /** All provider IDs in definition order. */
   get providerIds(): readonly string[] {
     return this.defs.map(d => d.id);
+  }
+
+  /** Provider IDs in Settings display order for the requested category. */
+  idsByCategory(category: ProviderCategory): readonly string[] {
+    return PROVIDER_IDS_BY_CATEGORY[category];
+  }
+
+  /** Resolve the Settings category for a built-in provider. */
+  getCategory(id: string): ProviderCategory | undefined {
+    for (const category of [
+      ProviderCategory.International,
+      ProviderCategory.Domestic,
+      ProviderCategory.Local,
+    ]) {
+      if ((PROVIDER_IDS_BY_CATEGORY[category] as readonly string[]).includes(id)) {
+        return category;
+      }
+    }
+    return undefined;
   }
 
   /** Get full definition for a provider. Returns undefined for unknown IDs. */

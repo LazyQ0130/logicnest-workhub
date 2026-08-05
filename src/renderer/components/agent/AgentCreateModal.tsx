@@ -696,7 +696,7 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
                                 {i18nService.t(platform)}
                               </div>
                               <div className="text-xs text-secondary/50">
-                                {i18nService.t('agentIMNotConfiguredHint') || 'Please configure in Settings > IM Bots first'}
+                                {i18nService.t('agentIMNotConfiguredHint')}
                               </div>
                             </div>
                           </div>
@@ -778,7 +778,7 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
                           </div>
                           {!configured && (
                             <div className="text-xs text-secondary/50">
-                              {i18nService.t('agentIMNotConfiguredHint') || 'Please configure in Settings > IM Bots first'}
+                              {i18nService.t('agentIMNotConfiguredHint')}
                             </div>
                           )}
                         </div>

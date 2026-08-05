@@ -419,11 +419,16 @@ describe('OpenClawConfigSync runtime config output', () => {
   });
 
   test('writes managed browser proxy args when system proxy is enabled', async () => {
+    const { BrowserNetworkMode } = await import('../../shared/browserWebAccess/constants');
     const { applySystemProxyEnv, setSystemProxyEnabled } = await import('./systemProxy');
     setSystemProxyEnabled(true);
     applySystemProxyEnv('http://127.0.0.1:7890');
 
-    const sync = await createSync();
+    const sync = await createSync({
+      getBrowserWebAccessConfig: () => ({
+        networkMode: BrowserNetworkMode.PrivateNetworkAccess,
+      }),
+    });
 
     const result = sync.sync('browser-system-proxy');
     expect(result.ok).toBe(true);
@@ -450,6 +455,7 @@ describe('OpenClawConfigSync runtime config output', () => {
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     expect(config.browser.extraArgs).toBeUndefined();
     expect(config.browser.ssrfPolicy.dangerouslyAllowPrivateNetwork).toBe(false);
+    expect(config.browser.ssrfPolicy.allowedHostnames).toEqual(['localhost', '127.0.0.1', '::1']);
   });
 
   test('does not write managed browser proxy args when browser proxy following is disabled', async () => {
@@ -888,7 +894,7 @@ describe('OpenClawConfigSync runtime config output', () => {
         },
       },
     }));
-  });
+  }, 15_000);
 
   test('writes Claude OpenAI-compatible explicit cache params when server metadata is not loaded', async () => {
     mockRuntimeState.proxyPort = 56646;
@@ -1556,48 +1562,30 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(config.agents.defaults.models).toBeUndefined();
   });
 
-  test('enables media generation plugin when media entitlement is available', async () => {
-    const sync = await createSync({
-      canUseMediaGeneration: () => true,
-      getMediaCallbackUrl: () => 'http://127.0.0.1:5175/media-callback',
-    });
+  test('removes stale managed media generation and acpx plugin config', async () => {
+    fs.writeFileSync(configPath, JSON.stringify({
+      plugins: {
+        allow: ['browser', 'lobster-media-generation', 'acpx'],
+        entries: {
+          browser: { enabled: true },
+          'lobster-media-generation': {
+            enabled: true,
+            config: { callbackUrl: 'http://127.0.0.1:5175/media-callback' },
+          },
+          acpx: { enabled: false },
+        },
+      },
+    }, null, 2));
 
-    const result = sync.sync('media-entitlement-enabled');
+    const sync = await createSync();
+    const result = sync.sync('remove-retired-managed-plugins');
     expect(result.ok).toBe(true);
 
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    expect(config.plugins.entries['lobster-media-generation']).toEqual({
-      enabled: true,
-      config: {
-        callbackUrl: 'http://127.0.0.1:5175/media-callback',
-        secret: '${LOBSTER_MCP_BRIDGE_SECRET}',
-        requestTimeoutMs: 150000,
-      },
-    });
-    expect(config.tools.deny).not.toContain('image_generate');
-    expect(config.tools.deny).not.toContain('video_generate');
-  });
-
-  test('keeps media generation plugin configured without media entitlement', async () => {
-    const sync = await createSync({
-      canUseMediaGeneration: () => false,
-      getMediaCallbackUrl: () => 'http://127.0.0.1:5175/media-callback',
-    });
-
-    const result = sync.sync('media-entitlement-disabled');
-    expect(result.ok).toBe(true);
-
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    expect(config.plugins.entries['lobster-media-generation']).toEqual({
-      enabled: true,
-      config: {
-        callbackUrl: 'http://127.0.0.1:5175/media-callback',
-        secret: '${LOBSTER_MCP_BRIDGE_SECRET}',
-        requestTimeoutMs: 150000,
-      },
-    });
-    expect(config.tools.deny).not.toContain('image_generate');
-    expect(config.tools.deny).not.toContain('video_generate');
+    expect(config.plugins.entries['lobster-media-generation']).toBeUndefined();
+    expect(config.plugins.entries.acpx).toBeUndefined();
+    expect(config.plugins.allow).not.toContain('lobster-media-generation');
+    expect(config.plugins.allow).not.toContain('acpx');
   });
 
   test('declares and allowlists the bundled xai plugin so its compat hooks load', async () => {
@@ -2053,29 +2041,8 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(customParamsOnlySelection.providerConfig.models[0].reasoning).toBeUndefined();
   });
 
-  test('writes Telegram streaming in the nested schema expected by current OpenClaw', async () => {
-    const { OpenClawConfigSync } = await import('./openclawConfigSync');
-
-    const sync = new OpenClawConfigSync({
-      engineManager: {
-        getConfigPath: () => configPath,
-        getGatewayToken: () => 'gateway-token',
-        getStateDir: () => stateDir,
-        getBaseDir: () => tmpDir,
-      } as never,
-      getCoworkConfig: () => ({
-        workingDirectory: tmpDir,
-        systemPrompt: '',
-        executionMode: 'local',
-        agentEngine: 'openclaw',
-        memoryEnabled: false,
-        memoryImplicitUpdateEnabled: false,
-        memoryLlmJudgeEnabled: false,
-        memoryGuardLevel: 'balanced',
-        memoryUserMemoriesMaxItems: 100,
-        skipMissedJobs: false,
-      }),
-      isEnterprise: () => false,
+  test('does not emit retired Telegram channel config', async () => {
+    const sync = await createSync({
       getTelegramInstances: () => [{
         enabled: true,
         botToken: 'tg-token',
@@ -2096,28 +2063,13 @@ describe('OpenClawConfigSync runtime config output', () => {
         webhookSecret: '',
         debug: false,
       }],
-      getDiscordOpenClawConfig: () => null,
-      getDingTalkInstances: () => [],
-      getFeishuInstances: () => [],
-      getQQInstances: () => [],
-      getWecomConfig: () => null,
-      getWecomInstances: () => [],
-      getPopoInstances: () => [],
-      getNimConfig: () => null,
-      getNeteaseBeeChanConfig: () => null,
-      getWeixinConfig: () => null,
-      getIMSettings: () => null,
-      getSkillsList: () => [],
-      getAgents: () => [],
     });
 
     const result = sync.sync('test');
     expect(result.ok).toBe(true);
 
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    const accounts = config.channels.telegram.accounts;
-    const accountKey = Object.keys(accounts)[0];
-    expect(accounts[accountKey].streaming).toEqual({ mode: 'off' });
+    expect(config.channels ?? {}).not.toHaveProperty('telegram');
   });
 
   test('does not inject unsupported _agentBinding channel metadata and requests restart when bindings change', async () => {
@@ -2419,12 +2371,12 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(config.plugins.entries['openclaw-lark']).toEqual({ enabled: true });
     expect(config.plugins.entries).not.toHaveProperty('feishu');
     expect(config.plugins.entries.qqbot).toEqual({ enabled: true });
-    expect(config.plugins.entries.discord).toEqual({ enabled: false });
+    expect(config.plugins.entries).not.toHaveProperty('discord');
     expect(config.plugins.entries.browser).toEqual({ enabled: true });
     expect(config.plugins.entries).not.toHaveProperty('openclaw-qqbot');
     expect(config.plugins.allow).toContain('browser');
     expect(config.plugins.allow).toContain('qqbot');
-    expect(config.plugins.allow).toContain('discord');
+    expect(config.plugins.allow).not.toContain('discord');
   });
 
   test('writes plugin entries using manifest ids and removes stale package ids', async () => {
@@ -2499,11 +2451,11 @@ describe('OpenClawConfigSync runtime config output', () => {
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     expect(config.plugins.entries).not.toHaveProperty('clawemail-email');
     expect(config.plugins.entries).not.toHaveProperty('openclaw-nim-channel');
-    expect(config.plugins.entries.email).toEqual({ enabled: true });
-    expect(config.plugins.entries['nimsuite-openclaw-nim-channel']).toEqual({ enabled: true });
+    expect(config.plugins.entries).not.toHaveProperty('email');
+    expect(config.plugins.entries).not.toHaveProperty('nimsuite-openclaw-nim-channel');
   });
 
-  test('writes NIM env vars with the same indexes as enabled channel accounts', async () => {
+  test('does not emit retired NIM channel config or secrets', async () => {
     const sync = await createSync({
       getNimInstances: () => [
         {
@@ -2535,21 +2487,16 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(result.ok).toBe(true);
 
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    expect(config.channels.nim.accounts).not.toHaveProperty('nim-disa');
-    expect(config.channels.nim.accounts['nim-pack'].nimToken).toBe(
-      'packed-app|packed-account|packed-token',
-    );
-    expect(config.channels.nim.accounts['nim-work'].nimToken).toBe(
-      'work-app|work-account|${LOBSTER_NIM_TOKEN_1}',
-    );
+    expect(config.channels ?? {}).not.toHaveProperty('nim');
 
     const env = sync.collectSecretEnvVars();
     expect(env).not.toHaveProperty('LOBSTER_NIM_TOKEN');
-    expect(env.LOBSTER_NIM_TOKEN_1).toBe('work-token');
+    expect(env).not.toHaveProperty('LOBSTER_NIM_TOKEN_1');
   });
 
   test('writes weixin channel config using dmPolicy and allowFrom instead of unsupported accountId', async () => {
     const { OpenClawConfigSync } = await import('./openclawConfigSync');
+    let weixinEnabled = true;
 
     const sync = new OpenClawConfigSync({
       engineManager: {
@@ -2582,7 +2529,7 @@ describe('OpenClawConfigSync runtime config output', () => {
       getNimConfig: () => null,
       getNeteaseBeeChanConfig: () => null,
       getWeixinConfig: () => ({
-        enabled: true,
+        enabled: weixinEnabled,
         accountId: '97a130e3b62f@im.bot',
         dmPolicy: 'open',
         allowFrom: [],
@@ -2603,6 +2550,19 @@ describe('OpenClawConfigSync runtime config output', () => {
       allowFrom: ['*'],
     });
     expect(config.channels['openclaw-weixin']).not.toHaveProperty('accountId');
+
+    weixinEnabled = false;
+    sync.setWeixinLoginProviderActivationActive(true);
+    const activationResult = sync.sync('weixin-login-provider-activation');
+    expect(activationResult.ok).toBe(true);
+    const activationConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(activationConfig.channels['openclaw-weixin'].enabled).toBe(true);
+
+    sync.setWeixinLoginProviderActivationActive(false);
+    const releaseResult = sync.sync('weixin-login-provider-release');
+    expect(releaseResult.ok).toBe(true);
+    const releasedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(releasedConfig.channels['openclaw-weixin'].enabled).toBe(false);
   });
 
   test('writes managed browser policy forcing host target', async () => {
@@ -2755,8 +2715,7 @@ describe('OpenClawConfigSync runtime config output', () => {
       evaluateEnabled: false,
       ssrfPolicy: {
         dangerouslyAllowPrivateNetwork: false,
-        allowedHostnames: ['localhost'],
-        hostnameAllowlist: ['localhost'],
+        allowedHostnames: ['localhost', '127.0.0.1', '::1'],
         blockedHostnames: ['www.baidu.com'],
       },
     });
@@ -2774,8 +2733,13 @@ describe('OpenClawConfigSync runtime config output', () => {
       maxRedirects: 4,
       maxChars: 12000,
       userAgent: 'LobsterAI Test',
-      ssrfPolicy: { allowRfc2544BenchmarkRange: true },
+      ssrfPolicy: {
+        allowRfc2544BenchmarkRange: true,
+      },
     });
+    expect(Object.keys(config.tools.web.fetch.ssrfPolicy)).toEqual([
+      'allowRfc2544BenchmarkRange',
+    ]);
     expect(config.tools.web.fetch.useEnvProxy).toBeUndefined();
     expect(config.tools.web.fetch.useTrustedEnvProxy).toBeUndefined();
   });

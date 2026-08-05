@@ -64,6 +64,11 @@ import type {
   KitReference,
   ResolvedKitCapabilities,
 } from '../../../shared/kit/constants';
+import {
+  CoworkRunPolicy,
+  type CoworkRunPolicy as CoworkRunPolicyType,
+  CoworkSessionScope,
+} from '../../../shared/meetingRoom/constants';
 import { OpenClawGatewayFailureKind } from '../../../shared/openclawEngine/constants';
 import { OpenClawTranscriptSafetyStatus } from '../../../shared/openclawTranscript/constants';
 import { ProviderName } from '../../../shared/providers';
@@ -126,6 +131,7 @@ import { buildCoworkTopKEvidenceBridgeResult } from './coworkTopKEvidence';
 import { buildCoworkWorkspaceRehydrationBridge } from './coworkWorkspaceRehydration';
 import { extractCronDeliveredTarget } from './cronDeliveryTarget';
 import { buildMediaGenerationTurnInstruction } from './mediaGenerationTurnInstruction';
+import { getMeetingToolViolationReason } from './meetingRunPolicy';
 import { OpenClawApprovalController } from './openclawApprovalController';
 import {
   applyLocalTimestampsToEntries,
@@ -187,6 +193,7 @@ import type {
   CoworkRuntimeEvents,
   CoworkSessionPatchResult,
   CoworkStartOptions,
+  MeetingRunContext,
   PermissionResult,
 } from './types';
 
@@ -627,6 +634,8 @@ type ActiveTurn = {
   model: string;
   turnToken: number;
   planMode: boolean;
+  runPolicy: CoworkRunPolicyType;
+  meetingRunContext?: MeetingRunContext;
   /** Prevents repeated model retries when a plan response is incomplete. */
   planModeRecoveryAttempted?: boolean;
   /** Expected abort while replacing a blocked mutating tool run with a plan-only recovery. */
@@ -3491,6 +3500,23 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       emitPermissionRequest: (sessionId, request) => this.emit('permissionRequest', sessionId, request),
       emitPermissionResolved: (sessionId, requestId) => this.emit('permissionResolved', sessionId, requestId),
       emitError: (sessionId, error) => this.emit('error', sessionId, error),
+      getForcedDenialReason: (sessionId, toolName) => {
+        const turn = this.activeTurns.get(sessionId);
+        if (!turn || turn.runPolicy !== CoworkRunPolicy.MeetingDiscussion) return null;
+        const reason = getMeetingToolViolationReason(turn.runPolicy, toolName);
+        if (!reason) return null;
+        this.emit(
+          'runPolicyViolation',
+          sessionId,
+          turn.runId,
+          turn.runPolicy,
+          toolName,
+          reason,
+          turn.meetingRunContext,
+        );
+        queueMicrotask(() => this.stopSession(sessionId));
+        return reason;
+      },
     });
     this.subagentSessionMaterializer = new SubagentSessionMaterializer({
       store: this.store,
@@ -3793,6 +3819,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
         updatedAt: now,
         messagesOffset: 0,
         totalMessages: messages.length,
+        scope: CoworkSessionScope.User,
       };
     } catch (error) {
       console.error('[OpenClawRuntime] fetchSessionByKey: failed to fetch history:', error);
@@ -3884,6 +3911,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       totalMessages: messages.length,
       createdAt: firstTimestamp,
       updatedAt: firstTimestamp,
+      scope: CoworkSessionScope.User,
     };
   }
 
@@ -4192,6 +4220,8 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       mediaReferences: options.mediaReferences,
       selectedTextSnippets: options.selectedTextSnippets,
       browserAnnotations: options.browserAnnotations,
+      runPolicy: options.runPolicy,
+      meetingRunContext: options.meetingRunContext,
     });
   }
 
@@ -4210,6 +4240,8 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       mediaReferences: options.mediaReferences,
       selectedTextSnippets: options.selectedTextSnippets,
       browserAnnotations: options.browserAnnotations,
+      runPolicy: options.runPolicy,
+      meetingRunContext: options.meetingRunContext,
     });
   }
 
@@ -5028,6 +5060,8 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       mediaReferences?: CoworkMediaAttachmentRef[];
       selectedTextSnippets?: CoworkSelectedTextSnippet[];
       browserAnnotations?: CoworkBrowserAnnotationMessageBatch[];
+      runPolicy?: CoworkRunPolicyType;
+      meetingRunContext?: MeetingRunContext;
     },
   ): Promise<void> {
     if (
@@ -5067,7 +5101,9 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
 
     if (!options.skipInitialUserMessage) {
       const messageSkillIds = options.messageSkillIds ?? options.skillIds;
-      const imageAttachmentPreviews = buildCoworkImageAttachmentPreviews(options.imageAttachments);
+      const imageAttachmentPreviews = options.runPolicy === CoworkRunPolicy.MeetingDiscussion
+        ? undefined
+        : buildCoworkImageAttachmentPreviews(options.imageAttachments);
       const goalSettingMetadata = buildGoalSettingMessageMetadata(prompt);
       const metadata = (
         messageSkillIds?.length
@@ -5233,6 +5269,8 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       ),
     ].filter(p => p?.trim()).join('\n\n');
     const planMode = isPlanModeSystemPrompt(outboundSystemPrompt);
+    const runPolicy = options.runPolicy
+      ?? (planMode ? CoworkRunPolicy.Plan : CoworkRunPolicy.Default);
     if (planModeExecutionApproved) {
       console.log(
         `[OpenClawRuntime] exited plan mode for an approved implementation in session ${sessionId}.`,
@@ -5275,6 +5313,8 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       model: currentModel,
       turnToken,
       planMode,
+      runPolicy,
+      meetingRunContext: options.meetingRunContext,
       knownRunIds: new Set([runId]),
       assistantMessageId: null,
       committedAssistantText: '',
@@ -5304,6 +5344,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       bufferedAgentPayloads: [],
     });
     this.sessionIdByRunId.set(runId, sessionId);
+    this.emit('runStarted', sessionId, runId, runPolicy, options.meetingRunContext);
 
     // Start client-side timeout watchdog.
     // OpenClaw gateway has a known issue where embedded run timeouts may not
@@ -8124,6 +8165,24 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
 
     const toolNameRaw = typeof data.name === 'string' ? data.name.trim() : '';
     const toolName = toolNameRaw || 'Tool';
+
+    if (phase === 'start' && turn.runPolicy === CoworkRunPolicy.MeetingDiscussion) {
+      const reason = getMeetingToolViolationReason(turn.runPolicy, toolName);
+      if (!reason) return;
+      console.warn(`[OpenClawRuntime] ${reason} Session ${sessionId}.`);
+      turn.planModeSuppressedToolCallIds.add(toolCallId);
+      this.emit(
+        'runPolicyViolation',
+        sessionId,
+        turn.runId,
+        turn.runPolicy,
+        toolName,
+        reason,
+        turn.meetingRunContext,
+      );
+      this.stopSession(sessionId);
+      return;
+    }
     logThinkingDiagnostic(
       'tool-event',
       `sessionId=${sessionId}`,
@@ -8627,6 +8686,11 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
    * This bypasses handleAgentEvent's session resolution (which may enqueue events),
    * ensuring text updates and reset detection always work.
    */
+  private emitMeetingRunStream(sessionId: string, turn: ActiveTurn, content: string): void {
+    if (turn.runPolicy !== CoworkRunPolicy.MeetingDiscussion || !turn.meetingRunContext || !content) return;
+    this.emit('meetingRunStream', sessionId, turn.runId, content, turn.meetingRunContext);
+  }
+
   private processAgentAssistantText(payload: unknown): void {
     if (!isRecord(payload)) return;
     const p = payload as Record<string, unknown>;
@@ -8740,6 +8804,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     turn.currentText = text;
     const displayText = stripTrailingSilentReplyTail(text);
     turn.currentAssistantSegmentText = this.resolveAssistantSegmentText(turn, displayText);
+    this.emitMeetingRunStream(sessionId, turn, turn.currentAssistantSegmentText);
     if (turn.currentAssistantSegmentText) {
       this.logFirstResponseTiming(sessionId, turn, 'agent', turn.currentAssistantSegmentText.length);
     }
@@ -8849,6 +8914,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     const displayStreamedText = stripTrailingSilentReplyTail(streamedText);
     const segmentText = this.resolveAssistantSegmentText(turn, displayStreamedText);
     if (!segmentText) return;
+    this.emitMeetingRunStream(sessionId, turn, segmentText);
     if (segmentText === previousSegmentText && streamedText === previousText) return;
     this.logFirstResponseTiming(sessionId, turn, 'chat', segmentText.length);
 
@@ -8982,6 +9048,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     }
     const finalSegmentText = this.resolveAssistantSegmentText(turn, finalText);
     turn.currentAssistantSegmentText = finalSegmentText;
+    this.emitMeetingRunStream(sessionId, turn, finalSegmentText);
     if (finalSegmentText) {
       this.logFirstResponseTiming(sessionId, turn, 'chat', finalSegmentText.length);
     }
@@ -11343,6 +11410,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       model: this.resolveCurrentModelForSession(sessionId),
       turnToken,
       planMode: false,
+      runPolicy: CoworkRunPolicy.Default,
       knownRunIds: new Set(runId ? [runId] : [turnRunId]),
       assistantMessageId: null,
       committedAssistantText: '',

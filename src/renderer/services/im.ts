@@ -83,12 +83,7 @@ const IM_MULTI_INSTANCE_PLATFORMS = new Set<Platform>([
   'dingtalk',
   'feishu',
   'qq',
-  'email',
-  'nim',
   'wecom',
-  'telegram',
-  'discord',
-  'popo',
 ]);
 
 const getIMGatewayAnalyticsInstances = (platform: Platform) => {
@@ -371,7 +366,7 @@ class IMService {
     const status = this.getStatus();
     return PlatformRegistry.platforms.some(p => {
       const s = status[p];
-      if (p === 'qq' || p === 'feishu' || p === 'dingtalk' || p === 'wecom' || p === 'nim' || p === 'discord') {
+      if (p === 'qq' || p === 'feishu' || p === 'dingtalk' || p === 'wecom') {
         return (s as any)?.instances?.some((i: any) => i.connected);
       }
       return (s as any)?.connected;

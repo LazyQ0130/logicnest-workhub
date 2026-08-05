@@ -55,7 +55,7 @@ cleanup() {
   if [[ "${OPENCLAW_CHANGELOG_PREPARED:-0}" == "1" && -d "${OPENCLAW_SRC:-}" ]]; then
     (cd "$OPENCLAW_SRC" && node scripts/package-changelog.mjs restore >/dev/null 2>&1) || true
   fi
-  rm -rf "$WORK_DIR"
+  echo "[openclaw-runtime] Temporary build directory retained for safe manual cleanup: $WORK_DIR"
 }
 trap cleanup EXIT
 
@@ -157,7 +157,11 @@ node --import tsx --input-type=module - <<'NODE'
 const { writePackageDistInventory } = await import('./src/infra/package-dist-inventory.ts');
 await writePackageDistInventory(process.cwd());
 NODE
-node scripts/test-built-bundled-channel-entry-smoke.mjs
+if [[ "$TARGET_PLATFORM" == "win" ]]; then
+  echo "[openclaw-runtime] Skipping symlink-based channel entry smoke test on Windows"
+else
+  node scripts/test-built-bundled-channel-entry-smoke.mjs
+fi
 node scripts/package-changelog.mjs prepare
 OPENCLAW_CHANGELOG_PREPARED=1
 
@@ -182,7 +186,11 @@ if [[ ! -d "$PKG_DIR" ]]; then
 fi
 
 echo "[4/7] Preparing output runtime dir"
-rm -rf "$OUT_DIR"
+if [[ -e "$OUT_DIR" ]]; then
+  echo "Refusing to replace existing runtime directory: $OUT_DIR" >&2
+  echo "Move or remove that single target manually, then rerun the build." >&2
+  exit 1
+fi
 mkdir -p "$(dirname "$OUT_DIR")"
 cp -R "$PKG_DIR" "$OUT_DIR"
 
@@ -228,7 +236,10 @@ NODE
 
 echo "[5/7] Installing production dependencies"
 pushd "$OUT_DIR" >/dev/null
-rm -rf node_modules package-lock.json
+if [[ -e node_modules || -e package-lock.json ]]; then
+  echo "Packed runtime unexpectedly contains node_modules or package-lock.json; refusing destructive cleanup." >&2
+  exit 1
+fi
 
 # Avoid npm peer resolution conflicts caused by dev-only lint toolchain.
 npm pkg delete devDependencies >/dev/null 2>&1 || true

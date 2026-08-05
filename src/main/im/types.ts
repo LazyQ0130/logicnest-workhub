@@ -4,6 +4,14 @@
  */
 
 import type { Platform } from '../../shared/platform';
+export type {
+  IMConnectivityCheck,
+  IMConnectivityCheckCode,
+  IMConnectivityCheckLevel,
+  IMConnectivityTestResponse,
+  IMConnectivityTestResult,
+  IMConnectivityVerdict,
+} from '../../shared/im';
 export type { Platform } from '../../shared/platform';
 
 export interface DingTalkOpenClawConfig {
@@ -684,49 +692,6 @@ export interface IMStatusResult {
 export interface IMGatewayResult {
   success: boolean;
   skipped?: boolean;
-  error?: string;
-}
-
-// ==================== Connectivity Test Types ====================
-
-export type IMConnectivityVerdict = 'pass' | 'warn' | 'fail';
-
-export type IMConnectivityCheckLevel = 'pass' | 'info' | 'warn' | 'fail';
-
-export type IMConnectivityCheckCode =
-  | 'missing_credentials'
-  | 'auth_check'
-  | 'gateway_running'
-  | 'inbound_activity'
-  | 'outbound_activity'
-  | 'platform_last_error'
-  | 'feishu_group_requires_mention'
-  | 'feishu_event_subscription_required'
-  | 'discord_group_requires_mention'
-  | 'telegram_privacy_mode_hint'
-  | 'dingtalk_bot_membership_hint'
-  | 'nim_p2p_only_hint'
-  | 'openclaw_gateway_not_running'
-  | 'qq_guild_mention_hint'
-  | 'qq_mention_hint';
-
-export interface IMConnectivityCheck {
-  code: IMConnectivityCheckCode;
-  level: IMConnectivityCheckLevel;
-  message: string;
-  suggestion?: string;
-}
-
-export interface IMConnectivityTestResult {
-  platform: Platform;
-  testedAt: number;
-  verdict: IMConnectivityVerdict;
-  checks: IMConnectivityCheck[];
-}
-
-export interface IMConnectivityTestResponse {
-  success: boolean;
-  result?: IMConnectivityTestResult;
   error?: string;
 }
 

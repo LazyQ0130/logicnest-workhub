@@ -33,7 +33,7 @@ import {
 import {
   AgentId,
 } from '../shared/agent/constants';
-import { AppIpcChannel } from '../shared/app/constants';
+import { AppDocumentation, AppIpcChannel } from '../shared/app/constants';
 import { AppSettingsAutoLaunchErrorCode, AppSettingsIpc } from '../shared/appSettings/constants';
 import { AppUpdateIpc } from '../shared/appUpdate/constants';
 import { ArtifactBrowserPartition, ArtifactPreviewIpc, ArtifactPreviewProtocol } from '../shared/artifactPreview/constants';
@@ -47,6 +47,7 @@ import {
   AuthSessionChangeReason,
   AuthSessionStatus,
 } from '../shared/auth/constants';
+import { BRAND } from '../shared/brand';
 import {
   type BrowserDiagnosticResultStep,
   BrowserDiagnosticStatus,
@@ -133,6 +134,7 @@ import {
 } from '../shared/notifications/constants';
 import {
   OpenClawEngineIpc,
+  OpenClawEnginePhase,
   OpenClawGatewayRepairErrorCode,
 } from '../shared/openclawEngine/constants';
 import { PlatformRegistry } from '../shared/platform';
@@ -160,7 +162,7 @@ import {
 import type { ShellOpenFailureReason as ShellOpenFailureReasonType } from '../shared/shell/constants';
 import { type ShellGetBrowserAppsInput, ShellIpc, ShellOpenFailureReason } from '../shared/shell/constants';
 import { AgentManager } from './agentManager';
-import { APP_NAME, APP_USER_MODEL_ID, DB_FILENAME } from './appConstants';
+import { APP_NAME, APP_PROTOCOL_PREFIX, APP_SCHEME, APP_USER_MODEL_ID, DB_FILENAME, DEFAULT_PROJECT_DIRECTORY } from './appConstants';
 import { createLocalFileProtocolResponse } from './artifactLocalFileProtocol';
 import { authQuotaGateStateFromQuota, AuthSubscriptionStatus, createDefaultAuthQuotaGateState, normalizeAuthQuota } from './authQuota';
 import { type AutoLaunchStatus, getAutoLaunchStatus, isAutoLaunched, setAutoLaunchEnabled } from './autoLaunchManager';
@@ -174,16 +176,11 @@ import {
   readAllowFromStore,
   rejectPairingRequest,
 } from './im/imPairingStore';
-import { pollNimQrLogin, startNimQrLogin } from './im/nimQrLoginService';
 import type {
   DingTalkInstanceConfig,
-  DiscordInstanceConfig,
-  EmailMultiInstanceConfig,
   FeishuInstanceConfig,
-  NimInstanceConfig,
   Platform,
   QQInstanceConfig,
-  TelegramInstanceConfig,
   WecomInstanceConfig,
 } from './im/types';
 import { registerAgentHandlers } from './ipcHandlers/agents';
@@ -191,7 +188,6 @@ import { registerAsrIpcHandlers } from './ipcHandlers/asr';
 import { registerCoworkSubagentHandlers } from './ipcHandlers/coworkSubagent';
 import { registerKitHandlers } from './ipcHandlers/kits';
 import { registerMcpHandlers } from './ipcHandlers/mcp';
-import { registerNimQrLoginHandlers } from './ipcHandlers/nimQrLogin';
 import { registerPermissionIpcHandlers } from './ipcHandlers/permissions/handlers';
 import { registerPluginHandlers } from './ipcHandlers/plugins';
 import {
@@ -363,6 +359,10 @@ import { startOpenClawTokenProxy, stopOpenClawTokenProxy } from './libs/openclaw
 import { migrateMainAgentWorkspace } from './libs/openclawWorkspaceMigration';
 import { ensurePythonRuntimeReady } from './libs/pythonRuntime';
 import { sanitizeUrlForLog, serializeForLog } from './libs/sanitizeForLog';
+import {
+  ScheduledTaskStartupStage,
+  startScheduledTaskRuntime,
+} from './libs/scheduledTaskRuntimeStartup';
 import { packageNodeServiceDeployment } from './libs/shareDeployment/nodeServiceDeploymentPackager';
 import {
   analyzeNodeServiceProjectDirectory,
@@ -396,6 +396,10 @@ import {
   restoreOriginalProxyEnv,
   setSystemProxyEnabled,
 } from './libs/systemProxy';
+import { isLicenseAuthorized, LicenseController } from './license/licenseController';
+import { resolveLicenseQaE2eRuntime } from './license/qaE2eRuntime';
+import { broadcastLicenseState, registerLicenseIpc } from './license/registerLicenseIpc';
+import { ElectronSecureSessionStore } from './license/secureSessionStore';
 import { getLogFilePath, getRecentMainLogEntries, initLogger } from './logger';
 import { type AskUserResponse, McpRuntime } from './mcp/mcpRuntime';
 import {
@@ -410,6 +414,9 @@ import {
   MediaGenerationRequestType,
   summarizeMediaGenerationParamsForLog,
 } from './mediaGenerationReferences';
+import { MeetingRoomCoordinator } from './meetingRoom/coordinator';
+import { registerMeetingRoomIpcHandlers } from './meetingRoom/ipcHandlers';
+import { MeetingRoomStore } from './meetingRoom/store';
 import { OpenClawSessionIpc } from './openclawSession/constants';
 import { OpenClawSessionPolicyIpc } from './openclawSessionPolicy/constants';
 import {
@@ -1460,7 +1467,7 @@ const resolveInlineAttachmentDir = (cwd?: string): string => {
       return path.join(resolved, COWORK_TEMP_DIR_NAME, COWORK_TEMP_ATTACHMENTS_DIR_NAME, 'manual');
     }
   }
-  return path.join(app.getPath('temp'), 'lobsterai', 'attachments');
+  return path.join(app.getPath('temp'), BRAND.slug, 'attachments');
 };
 
 const ensurePngFileName = (value: string): string => {
@@ -1477,7 +1484,7 @@ const buildLogExportFileName = (): string => {
   const now = new Date();
   const datePart = `${now.getFullYear()}${padTwoDigits(now.getMonth() + 1)}${padTwoDigits(now.getDate())}`;
   const timePart = `${padTwoDigits(now.getHours())}${padTwoDigits(now.getMinutes())}${padTwoDigits(now.getSeconds())}`;
-  return `lobsterai-logs-${datePart}-${timePart}.zip`;
+  return `${BRAND.slug}-logs-${datePart}-${timePart}.zip`;
 };
 
 const OPENCLAW_DAILY_LOG_RETENTION_DAYS = 7;
@@ -1671,11 +1678,17 @@ const savePngWithDialog = async (
 const configureUserDataPath = (): void => {
   const appDataPath = app.getPath('appData');
   const preferredUserDataPath = path.join(appDataPath, APP_NAME);
+  const qaRuntime = resolveLicenseQaE2eRuntime({
+    env: process.env,
+    isPackaged: app.isPackaged,
+    defaultUserDataPath: preferredUserDataPath,
+  });
+  const targetUserDataPath = qaRuntime.userDataPath ?? preferredUserDataPath;
   const currentUserDataPath = app.getPath('userData');
 
-  if (currentUserDataPath !== preferredUserDataPath) {
-    app.setPath('userData', preferredUserDataPath);
-    console.log(`[Main] userData path updated: ${currentUserDataPath} -> ${preferredUserDataPath}`);
+  if (currentUserDataPath !== targetUserDataPath) {
+    app.setPath('userData', targetUserDataPath);
+    console.log(`[Main] userData path updated: ${currentUserDataPath} -> ${targetUserDataPath}`);
   }
 };
 
@@ -1787,9 +1800,46 @@ app.on('ready', () => {
   });
 });
 
+let rendererGoneSequence = 0;
+
+const getRendererProcessId = (webContents: WebContents): number | null => {
+  try {
+    return webContents.getOSProcessId();
+  } catch {
+    return null;
+  }
+};
+
 // 添加错误处理
 app.on('render-process-gone', (_event, webContents, details) => {
-  console.error('Render process gone:', details);
+  rendererGoneSequence += 1;
+  const eventId = `renderer-gone-${process.pid}-${rendererGoneSequence}`;
+  const ownerWindow = BrowserWindow.fromWebContents(webContents);
+  const currentUrl = (() => {
+    try {
+      return sanitizeUrlForLog(webContents.getURL());
+    } catch {
+      return '[unavailable]';
+    }
+  })();
+  console.error('[RendererCrash] render process gone', {
+    eventId,
+    reason: details.reason,
+    exitCode: details.exitCode,
+    exitCodeHex: `0x${(details.exitCode >>> 0).toString(16).padStart(8, '0')}`,
+    webContentsId: webContents.id,
+    rendererProcessId: getRendererProcessId(webContents),
+    url: currentUrl,
+    isMainWindow: ownerWindow !== null && ownerWindow === mainWindow,
+    isVisible: ownerWindow?.isVisible() ?? false,
+    isFocused: ownerWindow?.isFocused() ?? false,
+    isLoading: webContents.isLoading(),
+    authorizedRuntimeStarted,
+    gpuFeatureStatus: app.getGPUFeatureStatus(),
+  });
+  void process.getProcessMemoryInfo()
+    .then(memory => console.error('[RendererCrash] main process memory snapshot', { eventId, memory }))
+    .catch(error => console.warn('[RendererCrash] memory snapshot unavailable', { eventId, error }));
   const shouldReload =
     details.reason === 'crashed' ||
     details.reason === 'killed' ||
@@ -1841,6 +1891,10 @@ let coworkRuntimeForwarderBound = false;
 let memoryMigrationDone = false;
 let preventSleepBlockerId: number | null = null;
 let appUpdateCoordinator: AppUpdateCoordinator | null = null;
+let licenseController: LicenseController | null = null;
+let authorizedRuntimeStarted = false;
+let meetingRoomCoordinator: MeetingRoomCoordinator | null = null;
+let disposeMeetingRoomIpc: (() => void) | null = null;
 
 const AUTH_USER_STORE_KEY = 'auth_user';
 
@@ -1927,6 +1981,11 @@ const bindOpenClawStatusForwarder = (): void => {
   const manager = getOpenClawEngineManager();
   manager.on('status', status => {
     forwardOpenClawStatus(status);
+    if (status.phase !== OpenClawEnginePhase.Running) {
+      void meetingRoomCoordinator?.pauseForRuntimeUnavailable().catch(error => {
+        console.error('[MeetingRoom] failed to pause after runtime became unavailable:', error);
+      });
+    }
   });
   openClawStatusForwarderBound = true;
   forwardOpenClawStatus(manager.getStatus());
@@ -2976,6 +3035,28 @@ const getCoworkEngineRouter = () => {
   return coworkEngineRouter;
 };
 
+const getMeetingRoomCoordinator = (): MeetingRoomCoordinator => {
+  if (!meetingRoomCoordinator) {
+    const meetingStore = new MeetingRoomStore(getStore().getDatabase());
+    meetingRoomCoordinator = new MeetingRoomCoordinator({
+      db: getStore().getDatabase(),
+      store: meetingStore,
+      coworkStore: getCoworkStore(),
+      runtime: getCoworkEngineRouter(),
+      attachmentRoot: path.join(app.getPath('userData'), 'meeting-attachments'),
+      getDefaultModel: resolveDefaultAgentModelRef,
+      isAuthorized: () => Boolean(
+        licenseController && isLicenseAuthorized(licenseController.getState()),
+      ),
+      isRuntimeAvailable: () => {
+        const phase = getOpenClawEngineManager().getStatus().phase;
+        return phase === OpenClawEnginePhase.Running;
+      },
+    });
+  }
+  return meetingRoomCoordinator;
+};
+
 let coworkTempJanitor: CoworkTempJanitor | null = null;
 
 const getCoworkTempJanitor = (): CoworkTempJanitor => {
@@ -3112,6 +3193,30 @@ const getIMGatewayManager = () => {
         await openClawRuntimeAdapter.ensureReady();
         await openClawRuntimeAdapter.connectGatewayIfNeeded();
       },
+      prepareWeixinLoginProvider: async () => {
+        const configSync = getOpenClawConfigSync();
+        configSync.setWeixinLoginProviderActivationActive(true);
+        const result = await syncOpenClawConfig({
+          reason: 'weixin-login-provider-activation',
+          expectedImpact: OpenClawConfigImpact.Restart,
+        });
+        if (!result.success) {
+          configSync.setWeixinLoginProviderActivationActive(false);
+          throw new Error(result.error || 'Failed to activate Weixin login provider.');
+        }
+      },
+      releaseWeixinLoginProvider: async (connected: boolean) => {
+        const configSync = getOpenClawConfigSync();
+        configSync.setWeixinLoginProviderActivationActive(false);
+        if (connected) return;
+        const result = await syncOpenClawConfig({
+          reason: 'weixin-login-provider-release',
+          expectedImpact: OpenClawConfigImpact.Restart,
+        });
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to release Weixin login provider.');
+        }
+      },
       getOpenClawSessionKeysForCoworkSession: (sessionId: string) => {
         return openClawRuntimeAdapter?.getSessionKeysForSession(sessionId) ?? [];
       },
@@ -3225,10 +3330,17 @@ const getIMGatewayManager = () => {
 
     // Forward IM events to renderer
     imGatewayManager.on('statusChange', status => {
+      const activeStatus = {
+        dingtalk: status.dingtalk,
+        feishu: status.feishu,
+        qq: status.qq,
+        wecom: status.wecom,
+        weixin: status.weixin,
+      };
       const windows = BrowserWindow.getAllWindows();
       windows.forEach(win => {
         if (!win.isDestroyed()) {
-          win.webContents.send('im:status:change', status);
+          win.webContents.send('im:status:change', activeStatus);
         }
       });
     });
@@ -3892,11 +4004,11 @@ if (!gotTheLock) {
   if (!app.isPackaged) {
     // In dev mode, setAsDefaultProtocolClient needs the electron exe path
     // and the app entry point as extra args so the OS can relaunch correctly
-    app.setAsDefaultProtocolClient('lobsterai', process.execPath, [
+    app.setAsDefaultProtocolClient(APP_SCHEME, process.execPath, [
       path.resolve(process.argv[1]),
     ]);
   } else {
-    app.setAsDefaultProtocolClient('lobsterai');
+    app.setAsDefaultProtocolClient(APP_SCHEME);
   }
 
   const authCallbackRouter = new AuthCallbackRouter({
@@ -3966,7 +4078,7 @@ if (!gotTheLock) {
     }
 
     // Check for deep link in command line args (Windows/Linux)
-    const deepLink = commandLine.find(arg => arg.startsWith('lobsterai://'));
+    const deepLink = commandLine.find(arg => arg.startsWith(APP_PROTOCOL_PREFIX));
     if (deepLink) {
       handleDeepLink(deepLink);
     }
@@ -3975,11 +4087,24 @@ if (!gotTheLock) {
   });
 
   // IPC 处理程序
+  // License credentials and leases are Main-only. The generic renderer store
+  // must never become a second token/session vault.
+  const isProtectedRendererStoreKey = (key: unknown): boolean =>
+    typeof key === 'string' && (
+      key === 'auth_tokens'
+      || key === 'license_session'
+      || key.startsWith('license_')
+    );
+
   ipcMain.handle('store:get', (_event, key) => {
+    if (isProtectedRendererStoreKey(key)) return undefined;
     return getStore().get(key);
   });
 
   ipcMain.handle('store:set', async (_event, key, value) => {
+    if (isProtectedRendererStoreKey(key)) {
+      throw new Error('Protected license state is not writable from the renderer');
+    }
     const previousAppConfig = key === 'app_config'
       ? getStore().get<AppConfigSettings>('app_config')
       : undefined;
@@ -4053,6 +4178,9 @@ if (!gotTheLock) {
   });
 
   ipcMain.handle('store:remove', (_event, key) => {
+    if (isProtectedRendererStoreKey(key)) {
+      throw new Error('Protected license state is not removable from the renderer');
+    }
     getStore().delete(key);
   });
 
@@ -4121,7 +4249,7 @@ if (!gotTheLock) {
             ? [
                 {
                   archiveName: 'install-timing.log',
-                  filePath: path.join(app.getPath('appData'), 'LobsterAI', 'install-timing.log'),
+                  filePath: path.join(app.getPath('appData'), BRAND.userDataDirectory, 'install-timing.log'),
                 },
               ]
             : []),
@@ -6834,7 +6962,7 @@ if (!gotTheLock) {
       console.error('[DataMigration] backup failed:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to back up LobsterAI data',
+        error: error instanceof Error ? error.message : `Failed to back up ${BRAND.nameEn} data`,
       };
     }
   });
@@ -6893,11 +7021,11 @@ if (!gotTheLock) {
         success,
         scheduledRestart: rendererReleased,
         rollbackPath: restoreResult?.rollbackPath,
-        error: success ? undefined : restoreResult?.error || 'Failed to import LobsterAI data backup',
+        error: success ? undefined : restoreResult?.error || `Failed to import ${BRAND.nameEn} data backup`,
       };
     } catch (error) {
       isCleanupInProgress = false;
-      const message = error instanceof Error ? error.message : 'Failed to import LobsterAI data backup';
+      const message = error instanceof Error ? error.message : `Failed to import ${BRAND.nameEn} data backup`;
       console.error('[DataMigration] restore scheduling failed:', error);
       if (rendererReleased) {
         dialog.showErrorBox(t('dataMigrationRestoreDialogTitle'), message);
@@ -8936,11 +9064,6 @@ if (!gotTheLock) {
   };
   registerScheduledTaskHandlers(scheduledTaskHandlerDeps);
 
-  registerNimQrLoginHandlers({
-    startNimQrLogin,
-    pollNimQrLogin,
-  });
-
   registerPermissionIpcHandlers({ ipcMain, isDev });
 
   // ==================== IM Gateway IPC Handlers ====================
@@ -8948,7 +9071,17 @@ if (!gotTheLock) {
   ipcMain.handle('im:config:get', async () => {
     try {
       const config = getIMGatewayManager().getConfig();
-      return { success: true, config };
+      return {
+        success: true,
+        config: {
+          dingtalk: config.dingtalk,
+          feishu: config.feishu,
+          qq: config.qq,
+          wecom: config.wecom,
+          weixin: config.weixin,
+          settings: config.settings,
+        },
+      };
     } catch (error) {
       return {
         success: false,
@@ -9104,8 +9237,13 @@ if (!gotTheLock) {
 
   ipcMain.handle('im:config:set', async (_event, config: Partial<IMGatewayConfig>, options?: IMConfigSetOptions) => {
     try {
+      const activeConfig = Object.fromEntries(
+        Object.entries(config).filter(([key]) => (
+          key === 'settings' || PlatformRegistry.isActivePlatform(key)
+        )),
+      ) as Partial<IMGatewayConfig>;
       mutateImOpenClawConfig(() => {
-        getIMGatewayManager().setConfig(config, {
+        getIMGatewayManager().setConfig(activeConfig, {
           syncGateway: false,
           restartGatewayIfRunning: false,
         });
@@ -9154,6 +9292,9 @@ if (!gotTheLock) {
 
   ipcMain.handle('im:gateway:start', async (_event, platform: Platform) => {
     try {
+      if (!PlatformRegistry.isActivePlatform(platform)) {
+        throw new Error(t('scheduledTaskRetiredMessageChannel'));
+      }
       // Persist enabled state
       const manager = getIMGatewayManager();
       manager.setConfig({ [platform]: { enabled: true } });
@@ -9169,6 +9310,9 @@ if (!gotTheLock) {
 
   ipcMain.handle('im:gateway:stop', async (_event, platform: Platform) => {
     try {
+      if (!PlatformRegistry.isActivePlatform(platform)) {
+        throw new Error(t('scheduledTaskRetiredMessageChannel'));
+      }
       // Persist disabled state
       const manager = getIMGatewayManager();
       manager.setConfig({ [platform]: { enabled: false } });
@@ -9186,6 +9330,9 @@ if (!gotTheLock) {
     'im:gateway:test',
     async (_event, platform: Platform, configOverride?: Partial<IMGatewayConfig>) => {
       try {
+        if (!PlatformRegistry.isActivePlatform(platform)) {
+          throw new Error(t('scheduledTaskRetiredMessageChannel'));
+        }
         const result = await getIMGatewayManager().testGateway(platform, configOverride);
         return { success: true, result };
       } catch (error) {
@@ -9230,92 +9377,19 @@ if (!gotTheLock) {
     }
   });
 
-  // POPO QR login
-  ipcMain.handle('im:popo:qr-login-start', async () => {
-    try {
-      const result = getIMGatewayManager().popoQrLoginStart();
-      return { success: true, ...result };
-    } catch (error) {
-      return {
-        success: false,
-        message: error instanceof Error ? error.message : 'Failed to start POPO QR login',
-      };
-    }
-  });
-
-  ipcMain.handle('im:popo:qr-login-poll', async (_event, taskToken: string) => {
-    try {
-      const result = await getIMGatewayManager().popoQrLoginPoll(taskToken);
-      return result;
-    } catch (error) {
-      return {
-        success: false,
-        message: error instanceof Error ? error.message : 'POPO QR login poll failed',
-      };
-    }
-  });
-
-  ipcMain.handle('im:popo:instance:add', async (_event, name: string) => {
-    try {
-      const instanceId = crypto.randomUUID();
-      const { DEFAULT_POPO_CONFIG: defaults } = await import('./im/types');
-      const instance = {
-        ...defaults,
-        instanceId,
-        instanceName: name || 'POPO Bot',
-      };
-      getIMGatewayManager().getIMStore().setPopoInstanceConfig(instanceId, instance);
-      return { success: true, instance };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to add POPO instance',
-      };
-    }
-  });
-
-  ipcMain.handle('im:popo:instance:delete', async (_event, instanceId: string, options?: IMConfigSetOptions) => {
-    try {
-      mutateImOpenClawConfig(
-        () => getIMGatewayManager().getIMStore().deletePopoInstance(instanceId),
-        {
-          syncGateway: options?.syncGateway,
-          restartGatewayIfRunning: options?.restartGatewayIfRunning,
-          markRestartOnSave: options?.markRestartOnSave,
-        },
-      );
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to delete POPO instance',
-      };
-    }
-  });
-
-  ipcMain.handle('im:popo:instance:config:set', async (_event, instanceId: string, config: Record<string, unknown>, options?: IMConfigSetOptions) => {
-    try {
-      mutateImOpenClawConfig(
-        () => getIMGatewayManager().getIMStore().setPopoInstanceConfig(instanceId, config),
-        {
-          syncGateway: options?.syncGateway,
-          restartGatewayIfRunning: options?.restartGatewayIfRunning,
-          markRestartOnSave: options?.markRestartOnSave,
-        },
-      );
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to set POPO instance config',
-      };
-    }
-  });
-
   ipcMain.handle('im:status:get', async () => {
     try {
       const status = await getIMGatewayManager().getStatusWithOpenClawRuntime();
-      return { success: true, status };
+      return {
+        success: true,
+        status: {
+          dingtalk: status.dingtalk,
+          feishu: status.feishu,
+          qq: status.qq,
+          wecom: status.wecom,
+          weixin: status.weixin,
+        },
+      };
     } catch (error) {
       return {
         success: false,
@@ -9347,78 +9421,13 @@ if (!gotTheLock) {
     }
   });
 
-  // Email: Test connection
-  ipcMain.handle('email:testConnection', async (event, { instanceId }: { instanceId: string }) => {
-    try {
-      const imManager = getIMGatewayManager();
-      const imStore = imManager.getIMStore();
-      const emailConfig = imStore.getEmailConfig();
-      const instance = emailConfig.instances.find(i => i.instanceId === instanceId);
-
-      if (!instance) {
-        throw new Error('Instance not found');
-      }
-
-      if (instance.transport === 'imap') {
-        // Test IMAP connection using node-imap
-
-        let Imap: new (config: Record<string, unknown>) => any;
-        try {
-          Imap = require('imap');
-        } catch {
-          throw new Error('IMAP module not installed. Please install the imap package.');
-        }
-        const deriveImapHost = (email: string) => {
-          const domain = email.split('@')[1];
-          return `imap.${domain}`;
-        };
-
-        const connection = new Imap({
-          user: instance.email,
-          password: instance.password,
-          host: instance.imapHost || deriveImapHost(instance.email),
-          port: instance.imapPort || 993,
-          tls: true,
-        });
-
-        await new Promise<void>((resolve, reject) => {
-          connection.once('ready', () => {
-            connection.end();
-            resolve();
-          });
-          connection.once('error', reject);
-          connection.connect();
-        });
-      } else if (instance.transport === 'ws') {
-        // Test WebSocket connection by fetching token
-        let fetchIMToken: (
-          apiKey: string,
-          email: string,
-          logger: typeof console,
-        ) => Promise<unknown>;
-        try {
-          ({ fetchIMToken } = require('@clawemail/node-sdk'));
-        } catch {
-          throw new Error(
-            'Email SDK not installed. Please install the @clawemail/node-sdk package.',
-          );
-        }
-        await fetchIMToken(instance.apiKey!, instance.email, console);
-      }
-
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  });
-
   // ---- Pairing IPC handlers ----
 
   ipcMain.handle('im:pairing:list', async (_event, platform: string) => {
     try {
+      if (!PlatformRegistry.isActivePlatform(platform)) {
+        throw new Error(t('scheduledTaskRetiredMessageChannel'));
+      }
       const stateDir = getOpenClawEngineManager().getStateDir();
       const requests = listPairingRequests(platform, stateDir);
       const allowFrom = readAllowFromStore(platform, stateDir);
@@ -9435,6 +9444,9 @@ if (!gotTheLock) {
 
   ipcMain.handle('im:pairing:approve', async (_event, platform: string, code: string) => {
     try {
+      if (!PlatformRegistry.isActivePlatform(platform)) {
+        throw new Error(t('scheduledTaskRetiredMessageChannel'));
+      }
       const stateDir = getOpenClawEngineManager().getStateDir();
       const approved = approvePairingCode(platform, code, stateDir);
       if (!approved) {
@@ -9454,6 +9466,9 @@ if (!gotTheLock) {
 
   ipcMain.handle('im:pairing:reject', async (_event, platform: string, code: string) => {
     try {
+      if (!PlatformRegistry.isActivePlatform(platform)) {
+        throw new Error(t('scheduledTaskRetiredMessageChannel'));
+      }
       const stateDir = getOpenClawEngineManager().getStateDir();
       const rejected = rejectPairingRequest(platform, code, stateDir);
       if (!rejected) {
@@ -9522,64 +9537,6 @@ if (!gotTheLock) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to set DingTalk instance config',
-      };
-    }
-  });
-
-  // NIM Multi-Instance handlers
-  ipcMain.handle('im:nim:instance:add', async (_event, name: string) => {
-    try {
-      const instanceId = crypto.randomUUID();
-      const { DEFAULT_NIM_OPENCLAW_CONFIG: defaults } = await import('./im/types');
-      const instance = {
-        ...defaults,
-        instanceId,
-        instanceName: name || 'NIM Bot',
-      };
-      getIMGatewayManager().getIMStore().setNimInstanceConfig(instanceId, instance);
-      return { success: true, instance };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to add NIM instance',
-      };
-    }
-  });
-
-  ipcMain.handle('im:nim:instance:delete', async (_event, instanceId: string, options?: IMConfigSetOptions) => {
-    try {
-      mutateImOpenClawConfig(
-        () => getIMGatewayManager().getIMStore().deleteNimInstance(instanceId),
-        {
-          syncGateway: options?.syncGateway,
-          restartGatewayIfRunning: options?.restartGatewayIfRunning,
-          markRestartOnSave: options?.markRestartOnSave,
-        },
-      );
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to delete NIM instance',
-      };
-    }
-  });
-
-  ipcMain.handle('im:nim:instance:config:set', async (_event, instanceId: string, config: Partial<NimInstanceConfig>, options?: IMConfigSetOptions) => {
-    try {
-      mutateImOpenClawConfig(
-        () => getIMGatewayManager().getIMStore().setNimInstanceConfig(instanceId, config),
-        {
-          syncGateway: options?.syncGateway,
-          restartGatewayIfRunning: options?.restartGatewayIfRunning,
-          markRestartOnSave: options?.markRestartOnSave,
-        },
-      );
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to set NIM instance config',
       };
     }
   });
@@ -9700,28 +9657,6 @@ if (!gotTheLock) {
     }
   });
 
-  // Email Multi-Instance handlers
-  ipcMain.handle('im:email:instance:add', async (_event, name: string) => {
-    try {
-      const instanceId = crypto.randomUUID();
-      const { DEFAULT_EMAIL_INSTANCE_CONFIG: defaults } = await import('./im/types');
-      const instance = {
-        ...defaults,
-        instanceId,
-        instanceName: name || 'Email',
-        email: '',
-        agentId: 'main',
-      };
-      getIMGatewayManager().getIMStore().setEmailInstanceConfig(instanceId, instance);
-      return { success: true, instance };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to add email instance',
-      };
-    }
-  });
-
   // WeCom Multi-Instance handlers
   ipcMain.handle('im:wecom:instance:add', async (_event, name: string) => {
     try {
@@ -9738,25 +9673,6 @@ if (!gotTheLock) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to add WeCom instance',
-      };
-    }
-  });
-
-  ipcMain.handle('im:email:instance:delete', async (_event, instanceId: string, options?: IMConfigSetOptions) => {
-    try {
-      mutateImOpenClawConfig(
-        () => getIMGatewayManager().getIMStore().deleteEmailInstance(instanceId),
-        {
-          syncGateway: options?.syncGateway,
-          restartGatewayIfRunning: options?.restartGatewayIfRunning,
-          markRestartOnSave: options?.markRestartOnSave,
-        },
-      );
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to delete email instance',
       };
     }
   });
@@ -9780,25 +9696,6 @@ if (!gotTheLock) {
     }
   });
 
-  ipcMain.handle('im:email:instance:config:set', async (_event, instanceId: string, config: Partial<EmailMultiInstanceConfig['instances'][number]>, options?: IMConfigSetOptions) => {
-    try {
-      mutateImOpenClawConfig(
-        () => getIMGatewayManager().getIMStore().setEmailInstanceConfig(instanceId, config),
-        {
-          syncGateway: options?.syncGateway,
-          restartGatewayIfRunning: options?.restartGatewayIfRunning,
-          markRestartOnSave: options?.markRestartOnSave,
-        },
-      );
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to set email instance config',
-      };
-    }
-  });
-
   ipcMain.handle('im:wecom:instance:config:set', async (_event, instanceId: string, config: Partial<WecomInstanceConfig>, options?: IMConfigSetOptions) => {
     try {
       mutateImOpenClawConfig(
@@ -9814,122 +9711,6 @@ if (!gotTheLock) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to set WeCom instance config',
-      };
-    }
-  });
-
-  // Telegram Multi-Instance handlers
-  ipcMain.handle('im:telegram:instance:add', async (_event, name: string) => {
-    try {
-      const instanceId = crypto.randomUUID();
-      const { DEFAULT_TELEGRAM_OPENCLAW_CONFIG: defaults } = await import('./im/types');
-      const instance = {
-        ...defaults,
-        instanceId,
-        instanceName: name || 'Telegram Bot',
-      };
-      getIMGatewayManager().getIMStore().setTelegramInstanceConfig(instanceId, instance);
-      return { success: true, instance };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to add Telegram instance',
-      };
-    }
-  });
-
-  ipcMain.handle('im:telegram:instance:delete', async (_event, instanceId: string, options?: IMConfigSetOptions) => {
-    try {
-      mutateImOpenClawConfig(
-        () => getIMGatewayManager().getIMStore().deleteTelegramInstance(instanceId),
-        {
-          syncGateway: options?.syncGateway,
-          restartGatewayIfRunning: options?.restartGatewayIfRunning,
-          markRestartOnSave: options?.markRestartOnSave,
-        },
-      );
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to delete Telegram instance',
-      };
-    }
-  });
-
-  ipcMain.handle('im:telegram:instance:config:set', async (_event, instanceId: string, config: Partial<TelegramInstanceConfig>, options?: IMConfigSetOptions) => {
-    try {
-      mutateImOpenClawConfig(
-        () => getIMGatewayManager().getIMStore().setTelegramInstanceConfig(instanceId, config),
-        {
-          syncGateway: options?.syncGateway,
-          restartGatewayIfRunning: options?.restartGatewayIfRunning,
-          markRestartOnSave: options?.markRestartOnSave,
-        },
-      );
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to set Telegram instance config',
-      };
-    }
-  });
-
-  // Discord Multi-Instance handlers
-  ipcMain.handle('im:discord:instance:add', async (_event, name: string) => {
-    try {
-      const instanceId = crypto.randomUUID();
-      const { DEFAULT_DISCORD_OPENCLAW_CONFIG: defaults } = await import('./im/types');
-      const instance = {
-        ...defaults,
-        instanceId,
-        instanceName: name || 'Discord Bot',
-      };
-      getIMGatewayManager().getIMStore().setDiscordInstanceConfig(instanceId, instance);
-      return { success: true, instance };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to add Discord instance',
-      };
-    }
-  });
-
-  ipcMain.handle('im:discord:instance:delete', async (_event, instanceId: string, options?: IMConfigSetOptions) => {
-    try {
-      mutateImOpenClawConfig(
-        () => getIMGatewayManager().getIMStore().deleteDiscordInstance(instanceId),
-        {
-          syncGateway: options?.syncGateway,
-          restartGatewayIfRunning: options?.restartGatewayIfRunning,
-          markRestartOnSave: options?.markRestartOnSave,
-        },
-      );
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to delete Discord instance',
-      };
-    }
-  });
-
-  ipcMain.handle('im:discord:instance:config:set', async (_event, instanceId: string, config: Partial<DiscordInstanceConfig>, options?: IMConfigSetOptions) => {
-    try {
-      mutateImOpenClawConfig(
-        () => getIMGatewayManager().getIMStore().setDiscordInstanceConfig(instanceId, config),
-        {
-          syncGateway: options?.syncGateway,
-          restartGatewayIfRunning: options?.restartGatewayIfRunning,
-          markRestartOnSave: options?.markRestartOnSave,
-        },
-      );
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to set Discord instance config',
       };
     }
   });
@@ -10474,7 +10255,7 @@ if (!gotTheLock) {
         const { execFile } = await import('child_process');
         const { promisify } = await import('util');
         const execFileAsync = promisify(execFile);
-        const tmpDir = path.join(app.getPath('temp'), 'lobsterai-thumbnails');
+        const tmpDir = path.join(app.getPath('temp'), `${BRAND.slug}-thumbnails`);
         await fs.promises.mkdir(tmpDir, { recursive: true });
         const baseName = path.basename(resolvedPath);
         const outputFile = path.join(tmpDir, `${baseName}.png`);
@@ -10592,7 +10373,7 @@ if (!gotTheLock) {
 
   ipcMain.handle(ShellIpc.OpenHtmlInBrowser, async (_event, htmlContent: string) => {
     try {
-      const tmpDir = path.join(os.tmpdir(), 'lobsterai-preview');
+      const tmpDir = path.join(os.tmpdir(), `${BRAND.slug}-preview`);
       fs.mkdirSync(tmpDir, { recursive: true });
       const tmpFile = path.join(tmpDir, `preview-${Date.now()}.html`);
       fs.writeFileSync(tmpFile, htmlContent, 'utf-8');
@@ -10865,7 +10646,24 @@ if (!gotTheLock) {
   });
 
   ipcMain.handle(AppUpdateIpc.CheckNow, async (_event, options?: { manual?: boolean }) => {
+    if (!BRAND.features.officialUpdates) {
+      return { success: true, state: getAppUpdateCoordinator().getState(), updateFound: false };
+    }
     return getAppUpdateCoordinator().checkNow(options);
+  });
+
+  ipcMain.handle(AppIpcChannel.OpenDocumentation, async (_event, document: AppDocumentation) => {
+    const fileNameByDocument: Record<AppDocumentation, string> = {
+      [AppDocumentation.UserManual]: 'client-activation.md',
+      [AppDocumentation.Security]: 'security-audit.md',
+    };
+    const fileName = fileNameByDocument[document];
+    if (!fileName) return { success: false, error: 'Unknown documentation file' };
+    const docsRoot = app.isPackaged
+      ? path.join(process.resourcesPath, 'documentation')
+      : path.join(app.getAppPath(), 'docs');
+    const result = await shell.openPath(path.join(docsRoot, fileName));
+    return result ? { success: false, error: result } : { success: true };
   });
 
   ipcMain.handle(AppUpdateIpc.RetryDownload, async () => {
@@ -10888,6 +10686,23 @@ if (!gotTheLock) {
 
   // Helper: detect if a URL belongs to GitHub Copilot and apply token refresh on 401.
   const isCopilotUrl = (url: string) => url.includes('githubcopilot.com');
+  const validateRendererApiUrl = (rawUrl: string): string | null => {
+    try {
+      const parsed = new URL(rawUrl);
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+        return 'Only HTTP(S) endpoints are allowed';
+      }
+      if (parsed.username || parsed.password) return 'URL credentials are not allowed';
+      const hostname = parsed.hostname.toLowerCase().replace(/[\[\]]/g, '');
+      const isLoopback = hostname === 'localhost' || hostname === '::1' || hostname === '127.0.0.1' || hostname.startsWith('127.');
+      const isPrivateIpv4 = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.|169\.254\.|0\.)/.test(hostname);
+      const isPrivateName = hostname.endsWith('.local') || hostname.endsWith('.internal') || hostname === 'metadata.google.internal';
+      if (!isLoopback && (isPrivateIpv4 || isPrivateName)) return 'Private network targets are not allowed';
+      return null;
+    } catch {
+      return 'Invalid endpoint URL';
+    }
+  };
   const retryCopilotWithRefreshedToken = async (opts: {
     url: string;
     method: string;
@@ -10918,8 +10733,12 @@ if (!gotTheLock) {
       },
     ) => {
       const sanitizedUrl = sanitizeUrlForLog(options.url);
+      const urlError = validateRendererApiUrl(options.url);
+      if (urlError) {
+        return { ok: false, status: 400, statusText: urlError, headers: {}, data: null, error: urlError };
+      }
       console.log(
-        `[api:fetch] ${options.method} ${sanitizedUrl}, headers: ${serializeForLog(options.headers)}, body: ${options.body}`,
+        `[api:fetch] ${options.method} ${sanitizedUrl}, headers: ${serializeForLog(options.headers)}, bodyBytes: ${options.body?.length ?? 0}`,
       );
 
       const doFetch = async (headers: Record<string, string>) => {
@@ -10951,10 +10770,8 @@ if (!gotTheLock) {
 
       try {
         let result = await doFetch(options.headers);
-        console.log(
-          `[api:fetch] ${options.method} ${sanitizedUrl} -> ${result.status} ${result.statusText}`,
-          typeof result.data === 'object' ? JSON.stringify(result.data) : result.data,
-        );
+        const responseBytes = typeof result.data === 'string' ? result.data.length : JSON.stringify(result.data ?? '').length;
+        console.log(`[api:fetch] ${options.method} ${sanitizedUrl} -> ${result.status} ${result.statusText}, responseBytes: ${responseBytes}`);
 
         // Auto-retry once for Copilot 401/403
         if (
@@ -11002,6 +10819,10 @@ if (!gotTheLock) {
         requestId: string;
       },
     ) => {
+      const urlError = validateRendererApiUrl(options.url);
+      if (urlError) {
+        return { ok: false, status: 400, statusText: urlError, error: urlError };
+      }
       const controller = new AbortController();
 
       // 存储 controller 以便后续取消
@@ -11036,13 +10857,13 @@ if (!gotTheLock) {
         }
 
         if (!response.ok) {
-          const errorData = await response.text();
+          await response.arrayBuffer();
           activeStreamControllers.delete(options.requestId);
           return {
             ok: false,
             status: response.status,
             statusText: response.statusText,
-            error: errorData,
+            error: `Upstream request failed (${response.status})`,
           };
         }
 
@@ -11380,10 +11201,8 @@ if (!gotTheLock) {
     });
 
     // 处理渲染进程崩溃或退出
-    mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    mainWindow.webContents.on('render-process-gone', () => {
       authCallbackRouter.markRendererUnavailable();
-      console.error('Window render process gone:', details);
-      scheduleReload('webContents-crashed');
     });
 
     if (isDev) {
@@ -11409,9 +11228,6 @@ if (!gotTheLock) {
       };
 
       tryLoadURL();
-
-      // 打开开发者工具
-      mainWindow.webContents.openDevTools();
     } else {
       // 生产环境
       mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
@@ -11460,37 +11276,9 @@ if (!gotTheLock) {
       // 窗口就绪后创建系统托盘
       createTray(() => mainWindow);
 
-      // Start cron polling after the window is ready.
-      (async () => {
-        try {
-          getCronJobService().startPolling();
-        } catch (err) {
-          console.warn(
-            '[Main] CronJobService not available yet, will start polling when OpenClaw is ready:',
-            err,
-          );
-        }
-
-        // One-time migration: move tasks from legacy SQLite tables to OpenClaw gateway.
-        migrateScheduledTasksToOpenclaw({
-          db: getStore().getDatabase(),
-          getKv: key => getStore().get(key),
-          setKv: (key, value) => getStore().set(key, value),
-          cronJobService: getCronJobService(),
-        }).catch(err => {
-          console.warn('[Main] Scheduled tasks migration failed:', err);
-        });
-
-        // One-time migration: copy legacy run history to OpenClaw cron/runs/ JSONL files.
-        migrateScheduledTaskRunsToOpenclaw({
-          db: getStore().getDatabase(),
-          getKv: key => getStore().get(key),
-          setKv: (key, value) => getStore().set(key, value),
-          openclawStateDir: getOpenClawEngineManager().getStateDir(),
-        }).catch(err => {
-          console.warn('[Main] Scheduled task run history migration failed:', err);
-        });
-      })();
+      if (!authorizedRuntimeStarted) {
+        console.debug('[Main] Scheduled task startup is waiting for the authorized runtime.');
+      }
     });
   };
 
@@ -11719,12 +11507,49 @@ if (!gotTheLock) {
     }
 
     sqliteBackupManager?.stopPeriodicBackupLoop();
+    licenseController?.dispose();
+    disposeMeetingRoomIpc?.();
+    disposeMeetingRoomIpc = null;
 
     // Close the SQLite database to flush the WAL and release the file lock.
     try {
       getStore().close();
     } catch {
       // Store may not have been initialized — safe to ignore.
+    }
+  };
+
+  /**
+   * Stop every product-owned runtime when the license heartbeat reports a
+   * terminal failure. Renderer gating alone is not sufficient because IPC
+   * handlers and background services live in the main process.
+   */
+  const suspendAuthorizedRuntime = async (reason: string): Promise<void> => {
+    if (!authorizedRuntimeStarted) return;
+    authorizedRuntimeStarted = false;
+    console.warn(`[License] suspending authorized runtime: ${reason}`);
+    await meetingRoomCoordinator?.pauseForAuthorizationLoss().catch(error => {
+      console.error('[MeetingRoom] failed to pause after authorization loss:', error);
+    });
+    coworkEngineRouter?.stopAllSessions();
+    openClawRuntimeAdapter?.disconnectGatewayClient();
+    await stopCoworkOpenAICompatProxy().catch(error => {
+      console.warn('[License] failed to stop compatibility proxy:', error);
+    });
+    stopOpenClawTokenProxy();
+    await getSkillServiceManager().stopAll().catch(error => {
+      console.warn('[License] failed to stop skill services:', error);
+    });
+    await imGatewayManager?.stopAll().catch(error => {
+      console.warn('[License] failed to stop IM gateways:', error);
+    });
+    await openClawEngineManager?.stopGateway().catch(error => {
+      console.warn('[License] failed to stop OpenClaw gateway:', error);
+    });
+    try {
+      getCronJobService().stopPolling();
+    } catch {
+      // Cron service may not have been initialized yet.
     }
   };
 
@@ -11785,7 +11610,7 @@ if (!gotTheLock) {
     // We don't trigger permission dialogs at startup to avoid annoying users
 
     // Ensure default working directory exists
-    const defaultProjectDir = path.join(os.homedir(), 'lobsterai', 'project');
+    const defaultProjectDir = path.join(os.homedir(), DEFAULT_PROJECT_DIRECTORY, 'project');
     if (!fs.existsSync(defaultProjectDir)) {
       fs.mkdirSync(defaultProjectDir, { recursive: true });
       console.log('Created default project directory:', defaultProjectDir);
@@ -11801,6 +11626,41 @@ if (!gotTheLock) {
     store = await initStore();
     profiler.measure('initStore');
     console.log('[Main] initApp: store initialized');
+    const restartedMeetingCount = new MeetingRoomStore(store.getDatabase())
+      .markRunningMeetingsPausedOnRestart();
+    if (restartedMeetingCount > 0) {
+      console.log(`[MeetingRoom] paused ${restartedMeetingCount} running meeting(s) after app restart.`);
+    }
+    licenseController = new LicenseController({
+      apiBaseUrl: process.env.LOGICNEST_LICENSE_API_URL
+        ?? (isDev ? 'http://127.0.0.1:8787/api/v1' : undefined),
+      publicKeyPem: process.env.LOGICNEST_LICENSE_PUBLIC_KEY_PEM,
+      clientVersion: app.getVersion(),
+      deviceFingerprint: resolveLicenseQaE2eRuntime({
+        env: process.env,
+        isPackaged: app.isPackaged,
+        defaultUserDataPath: path.join(app.getPath('appData'), APP_NAME),
+      }).deviceFingerprint,
+      sessionStore: new ElectronSecureSessionStore(app.getPath('userData')),
+      onStateChanged: broadcastLicenseState,
+      onAuthorizationLost: reason => {
+        void suspendAuthorizedRuntime(reason);
+      },
+    });
+    registerLicenseIpc(licenseController);
+    const initialLicenseState = await licenseController.initialize();
+    if (!isLicenseAuthorized(initialLicenseState)) {
+      setContentSecurityPolicy();
+      registerVoiceInputPermissionHandler({
+        session: session.defaultSession,
+        getMainWindow: () => mainWindow,
+        isDev,
+        startUrl: process.env.ELECTRON_START_URL,
+      });
+      console.log(`[License] core runtime held until authorization (phase=${initialLicenseState.phase})`);
+      createWindow();
+      return;
+    }
     initializeKeyfromAttribution(store);
     refreshEndpointsTestMode(store);
     sqliteBackupManager = new SqliteBackupManager(app.getPath('userData'));
@@ -11827,6 +11687,10 @@ if (!gotTheLock) {
     if (resetCount > 0) {
       console.log(`[Main] Reset ${resetCount} stuck cowork session(s) from running -> idle`);
     }
+    disposeMeetingRoomIpc ??= registerMeetingRoomIpcHandlers(
+      ipcMain,
+      getMeetingRoomCoordinator(),
+    );
     // Inject store getter into claudeSettings
     setStoreGetter(() => store);
     // Inject auth getters for lobsterai-server provider routing
@@ -12087,14 +11951,35 @@ if (!gotTheLock) {
     profiler.measure('syncOpenClawConfig');
     void ensureOpenClawRunningForCowork()
       .then(() => {
-        // Start cron polling once the gateway is confirmed running.
-        try {
-          getCronJobService().startPolling();
-        } catch (err) {
-          console.warn('[Main] CronJobService not available after OpenClaw startup:', err);
-        }
-        void migrateScheduledTaskAnnounceJobs(scheduledTaskHandlerDeps).catch(err => {
-          console.warn('[Main] Scheduled task IM announce job migration failed:', err);
+        authorizedRuntimeStarted = true;
+        void startScheduledTaskRuntime({
+          isRuntimeAvailable: () => authorizedRuntimeStarted && openClawRuntimeAdapter !== null,
+          getCronJobService,
+          migrateTasks: cronJobService => migrateScheduledTasksToOpenclaw({
+            db: getStore().getDatabase(),
+            getKv: key => getStore().get(key),
+            setKv: (key, value) => getStore().set(key, value),
+            cronJobService,
+          }),
+          migrateRuns: () => migrateScheduledTaskRunsToOpenclaw({
+            db: getStore().getDatabase(),
+            getKv: key => getStore().get(key),
+            setKv: (key, value) => getStore().set(key, value),
+            openclawStateDir: getOpenClawEngineManager().getStateDir(),
+          }),
+          migrateAnnounceJobs: () => migrateScheduledTaskAnnounceJobs(scheduledTaskHandlerDeps),
+          onSkipped: () => {
+            console.debug('[Main] Scheduled task startup skipped because the runtime is unavailable.');
+          },
+          onError: (stage, error) => {
+            const labelByStage: Record<ScheduledTaskStartupStage, string> = {
+              [ScheduledTaskStartupStage.Service]: 'service startup',
+              [ScheduledTaskStartupStage.TaskMigration]: 'task migration',
+              [ScheduledTaskStartupStage.RunMigration]: 'run history migration',
+              [ScheduledTaskStartupStage.AnnounceMigration]: 'IM announce migration',
+            };
+            console.warn(`[Main] Scheduled task ${labelByStage[stage]} failed:`, error);
+          },
         });
       })
       .catch(error => {
@@ -12203,7 +12088,7 @@ if (!gotTheLock) {
 
     // Windows/Linux cold start: parse deep link from process.argv.
     // The router buffers it because the renderer is not ready yet after createWindow().
-    const coldStartDeepLink = process.argv.find(arg => arg.startsWith('lobsterai://'));
+    const coldStartDeepLink = process.argv.find(arg => arg.startsWith(APP_PROTOCOL_PREFIX));
     if (coldStartDeepLink) {
       handleDeepLink(coldStartDeepLink);
     }

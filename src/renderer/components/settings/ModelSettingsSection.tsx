@@ -1,24 +1,26 @@
 import { EyeIcon, EyeSlashIcon, XCircleIcon as XCircleIconSolid } from '@heroicons/react/20/solid';
-import { ArrowTopRightOnSquareIcon, CheckCircleIcon, ExclamationCircleIcon, KeyIcon, MagnifyingGlassIcon, ShieldCheckIcon, SignalIcon, XCircleIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { ArrowTopRightOnSquareIcon, CheckCircleIcon, ExclamationCircleIcon, KeyIcon, ShieldCheckIcon, SignalIcon, XCircleIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React from 'react';
 
 import {
   normalizeModelIdForComparison,
   ProviderAuthType,
+  ProviderCategory,
   ProviderName,
   ProviderRegistry,
 } from '../../../shared/providers';
 import { defaultConfig, getCustomProviderDefaultName, getProviderDisplayName, isCustomProvider } from '../../config';
-import { getProviderIcon } from '../../providers/uiRegistry';
 import { i18nService } from '../../services/i18n';
 import EditIcon from '../icons/EditIcon';
 import PlusCircleIcon from '../icons/PlusCircleIcon';
 import { GitHubCopilotIcon } from '../icons/providers';
 import TrashIcon from '../icons/TrashIcon';
 import {
-  CUSTOM_PROVIDER_KEYS,
+  findPreferredProviderForCategory,
   getEffectiveApiFormat,
+  getProviderCategory,
   getProviderDefaultBaseUrl,
+  getProviderKeysForCategory,
   hasProviderAuthConfigured,
   type ProviderConfig,
   providerRequiresApiKey,
@@ -26,6 +28,7 @@ import {
   type ProviderType,
   shouldShowApiFormatSelector,
 } from './modelProviderUtils';
+import ProviderBrowser from './ProviderBrowser';
 
 // Context Window slider constants & helpers
 const CW_MIN = 32000;
@@ -114,7 +117,6 @@ type ProviderConnectionTestResult = {
 export interface ModelSettingsSectionProps {
   providers: ProvidersConfig;
   activeProvider: ProviderType;
-  visibleProviders: ProvidersConfig;
   showApiKey: boolean;
   setShowApiKey: (v: boolean) => void;
   isImportingProviders: boolean;
@@ -596,7 +598,7 @@ export const DeleteProviderConfirmDialog: React.FC<DeleteProviderConfirmDialogPr
 };
 
 const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
-  providers, activeProvider, visibleProviders,
+  providers, activeProvider,
   showApiKey, setShowApiKey,
   isImportingProviders, isExportingProviders,
   minimaxIsOAuthMode, openaiIsOAuthMode, isBaseUrlLocked,
@@ -628,22 +630,37 @@ const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
   // missing auth requirement (API key input / login) instead of ignoring the click.
   const [authAttention, setAuthAttention] = React.useState<{ provider: ProviderType; nonce: number } | null>(null);
 
-  const [providerFilter, setProviderFilter] = React.useState('');
-  const providerEntries = Object.entries(visibleProviders).map(([provider, config]) => {
-    const providerKey = provider as ProviderType;
-    const isCustom = isCustomProvider(provider);
-    const displayLabel = isCustom
-      ? ((config as ProviderConfig).displayName || getCustomProviderDefaultName(provider))
-      : (ProviderRegistry.get(providerKey)?.label ?? getProviderDisplayName(provider));
-    return { providerKey, config, isCustom, displayLabel };
-  });
-  const providerFilterText = providerFilter.trim().toLowerCase();
-  const filteredProviderEntries = providerFilterText
-    ? providerEntries.filter(({ providerKey, displayLabel }) =>
-      displayLabel.toLowerCase().includes(providerFilterText) || providerKey.toLowerCase().includes(providerFilterText))
-    : providerEntries;
-  const enabledProviderCount = providerEntries.filter(({ providerKey, config }) =>
-    config.enabled && hasProviderAuthConfigured(providerKey, config)).length;
+  const initialProviderCategory = getProviderCategory(activeProvider) ?? ProviderCategory.International;
+  const [activeCategory, setActiveCategory] = React.useState(initialProviderCategory);
+  const [lastSelectedProviderByCategory, setLastSelectedProviderByCategory] = React.useState<
+    Partial<Record<ProviderCategory, ProviderType>>
+  >({ [initialProviderCategory]: activeProvider });
+
+  React.useEffect(() => {
+    const category = getProviderCategory(activeProvider);
+    if (!category) return;
+    setActiveCategory(category);
+    setLastSelectedProviderByCategory(previous => (
+      previous[category] === activeProvider
+        ? previous
+        : { ...previous, [category]: activeProvider }
+    ));
+  }, [activeProvider]);
+
+  const handleProviderCategoryChange = (category: ProviderCategory) => {
+    setActiveCategory(category);
+    const nextProvider = findPreferredProviderForCategory(
+      category,
+      providers,
+      lastSelectedProviderByCategory[category],
+    );
+    if (nextProvider && nextProvider !== activeProvider) {
+      handleProviderChange(nextProvider);
+    }
+  };
+
+  const isCustomCategoryEmpty = activeCategory === ProviderCategory.Custom
+    && getProviderKeysForCategory(ProviderCategory.Custom, providers).length === 0;
 
   const getProviderAuthRequirementHint = (providerKey: ProviderType, config: ProviderConfig): string => {
     const requiresLogin = providerKey === ProviderName.Copilot
@@ -682,165 +699,53 @@ const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
 
   return (
     <>
-          <div className="flex h-full">
-            {/* Provider List - Left Side */}
-            <div className="w-2/5 border-r border-border pr-3 flex flex-col min-h-0">
-              <div className="shrink-0 space-y-2 pb-2">
-                <div className="flex items-center justify-between px-1">
-                  <h3 className="flex items-baseline gap-1.5 text-sm font-medium text-foreground">
-                    {i18nService.t('modelProviders')}
-                    <span className="text-[10px] font-normal text-muted">
-                      {enabledProviderCount}/{providerEntries.length} {i18nService.t('providersEnabledSuffix')}
-                    </span>
-                  </h3>
-                  <div className="flex items-center space-x-1">
-                    <button
-                      type="button"
-                      onClick={handleImportProvidersClick}
-                      disabled={isImportingProviders || isExportingProviders}
-                      className="inline-flex items-center px-2 py-1 text-[11px] font-medium rounded-lg border border-border text-foreground hover:bg-surface-raised disabled:opacity-50 disabled:cursor-not-allowed transition-colors active:scale-[0.98]"
-                    >
-                      {i18nService.t('import')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleExportProviders}
-                      disabled={isImportingProviders || isExportingProviders}
-                      className="inline-flex items-center px-2 py-1 text-[11px] font-medium rounded-lg border border-border text-foreground hover:bg-surface-raised disabled:opacity-50 disabled:cursor-not-allowed transition-colors active:scale-[0.98]"
-                    >
-                      {i18nService.t('export')}
-                    </button>
-                  </div>
-                </div>
-                <div className="relative">
-                  <MagnifyingGlassIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
-                  <input
-                    type="text"
-                    value={providerFilter}
-                    onChange={(e) => setProviderFilter(e.target.value)}
-                    placeholder={i18nService.t('searchProviders')}
-                    className="block w-full rounded-xl bg-claude-surfaceInset dark:bg-claude-darkSurfaceInset dark:border-claude-darkBorder border-claude-border border focus:border-claude-accent focus:ring-1 focus:ring-claude-accent/30 dark:text-claude-darkText text-claude-text pl-8 pr-7 py-1.5 text-xs"
-                  />
-                  {providerFilter && (
-                    <button
-                      type="button"
-                      onClick={() => setProviderFilter('')}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded text-claude-textSecondary dark:text-claude-darkTextSecondary hover:text-claude-accent transition-colors"
-                      title={i18nService.t('clear') || 'Clear'}
-                    >
-                      <XCircleIconSolid className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-              <input
-                ref={importInputRef}
-                type="file"
-                accept="application/json"
-                className="hidden"
-                onChange={handleImportProviders}
-              />
-              <div className="flex-1 space-y-1.5 overflow-y-auto pb-1">
-              {filteredProviderEntries.map(({ providerKey, config, isCustom, displayLabel }) => {
-                const provider = providerKey as string;
-                const hasValidAuth = hasProviderAuthConfigured(providerKey, config);
-                const effectiveEnabled = config.enabled && hasValidAuth;
-                const canToggleProvider = effectiveEnabled || hasValidAuth;
-                const attentionNonce = authAttention && authAttention.provider === providerKey && !canToggleProvider
-                  ? authAttention.nonce
-                  : null;
-                return (
-                  <div
-                    key={provider}
-                    onClick={() => handleProviderChange(providerKey)}
-                    className={`group flex items-center p-2 rounded-xl cursor-pointer transition-colors ${
-                      activeProvider === provider
-                        ? 'bg-primary-muted border border-primary shadow-subtle'
-                        : 'bg-surface hover:bg-surface-raised border border-transparent'
-                    }`}
-                  >
-                    <div className="flex flex-1 items-center min-w-0">
-                      <div className="mr-2 flex h-7 w-7 items-center justify-center shrink-0">
-                        <span className="text-foreground">
-                          {getProviderIcon(provider)}
-                        </span>
-                      </div>
-                      <div className="flex flex-col min-w-0">
-                        <span className={`text-sm font-medium truncate ${
-                          activeProvider === provider
-                            ? 'text-primary'
-                            : 'text-foreground'
-                        }`}>
-                          {displayLabel}
-                        </span>
-                        {isCustom && (
-                          <span className="text-[9px] leading-tight mt-0.5 text-primary">
-                            {i18nService.t('customBadge')}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center ml-2 gap-1">
-                      {isCustom && (
-                        <button
-                          type="button"
-                          className="p-1 rounded-lg opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-secondary hover:text-red-500 hover:bg-red-500/10 dark:hover:text-red-400 dark:hover:bg-red-400/10 transition-all"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteCustomProvider(providerKey);
-                          }}
-                          title={i18nService.t('deleteCustomProvider')}
-                        >
-                          <TrashIcon className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                      <div
-                        key={attentionNonce === null ? undefined : `provider-toggle-attention-${attentionNonce}`}
-                        title={!canToggleProvider ? getProviderAuthRequirementHint(providerKey, config) : undefined}
-                        className={`w-7 h-4 rounded-full flex items-center transition-colors ${
-                          effectiveEnabled ? 'bg-primary' : 'bg-gray-400 dark:bg-gray-600'
-                        } ${
-                          canToggleProvider ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'
-                        } ${attentionNonce === null ? '' : 'animate-shake'}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!canToggleProvider) {
-                            requestProviderAuthAttention(providerKey);
-                            return;
-                          }
-                          toggleProviderEnabled(providerKey);
-                        }}
-                      >
-                        <div
-                          className={`w-3 h-3 rounded-full bg-white shadow-md transform transition-transform ${
-                            effectiveEnabled ? 'translate-x-3.5' : 'translate-x-0.5'
-                          }`}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-              {filteredProviderEntries.length === 0 && (
-                <div className="px-2 py-6 text-center text-xs text-secondary">
-                  {i18nService.t('noProvidersFound')}
-                </div>
-              )}
-              {/* Add Custom Provider Button */}
-              {CUSTOM_PROVIDER_KEYS.some(k => !providers[k]) && (
-              <button
-                type="button"
-                onClick={handleAddCustomProvider}
-                className="w-full flex items-center justify-center p-2 rounded-xl border border-dashed border-claude-border dark:border-claude-darkBorder text-claude-secondaryText dark:text-claude-darkSecondaryText hover:border-claude-accent hover:text-claude-accent transition-colors text-sm"
-              >
-                {i18nService.t('addCustomProvider')}
-              </button>
-              )}
-              </div>
-            </div>
+          <div className="flex min-h-full flex-col">
+            {/* Provider status overview and grid */}
+            <ProviderBrowser
+              providers={providers}
+              activeProvider={activeProvider}
+              activeCategory={activeCategory}
+              isImportingProviders={isImportingProviders}
+              isExportingProviders={isExportingProviders}
+              importInputRef={importInputRef}
+              onCategoryChange={handleProviderCategoryChange}
+              onProviderChange={handleProviderChange}
+              onToggleProvider={toggleProviderEnabled}
+              onProviderAuthRequired={requestProviderAuthAttention}
+              onAddCustomProvider={handleAddCustomProvider}
+              onDeleteCustomProvider={handleDeleteCustomProvider}
+              onImportProvidersClick={handleImportProvidersClick}
+              onExportProviders={handleExportProviders}
+              onImportProviders={handleImportProviders}
+              getProviderAuthRequirementHint={getProviderAuthRequirementHint}
+            />
 
-            {/* Provider Settings - Right Side */}
-            <div className="w-3/5 pl-4 pr-2 space-y-4 overflow-y-auto [scrollbar-gutter:stable]">
+            {/* Selected provider details */}
+            <div className="w-full space-y-4 pt-6">
+              {isCustomCategoryEmpty ? (
+                <div className="flex min-h-full items-center justify-center px-6 py-10 text-center">
+                  <div className="max-w-xs">
+                    <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-2xl bg-primary-muted text-primary">
+                      <PlusCircleIcon className="h-5 w-5" />
+                    </div>
+                    <h3 className="text-sm font-medium text-foreground">
+                      {i18nService.t('customProvidersEmptyTitle')}
+                    </h3>
+                    <p className="mt-1.5 text-xs leading-5 text-secondary">
+                      {i18nService.t('customProvidersEmptyDescription')}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleAddCustomProvider}
+                      className="mt-4 inline-flex items-center gap-1 rounded-xl bg-primary px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-primary-hover active:scale-[0.98]"
+                    >
+                      <PlusCircleIcon className="h-4 w-4" />
+                      {i18nService.t('addCustomProvider')}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
               <div className="flex items-center justify-between pb-2 border-b border-border">
                 <div className="flex items-center gap-1.5">
                   <h3 className="text-base font-medium text-foreground">
@@ -2155,6 +2060,8 @@ const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
                   )}
                 </div>
               </div>
+                </>
+              )}
             </div>
           </div>
         {isTestResultModalOpen && testResult && (

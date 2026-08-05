@@ -17,6 +17,7 @@ import {
 } from './dataMigrationService';
 
 const tempRoots: string[] = [];
+const CURRENT_ARCHIVE_ROOT = '逻栖工枢';
 
 const makeTempDir = (): string => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lobsterai-data-migration-test-'));
@@ -291,10 +292,10 @@ test('createMigrationArchive excludes cache and log data and writes a manifest',
   createMigrationArchiveSync({ userDataPath: userData, outputPath: archivePath });
 
   const entries = listArchiveEntries(archivePath);
-  expect(entries).toContain('LobsterAI/.lobsterai-migration.json');
-  expect(entries).toContain(`LobsterAI/${DB_FILENAME}`);
-  expect(entries).toContain('LobsterAI/openclaw/state/openclaw.json');
-  expect(entries).toContain('LobsterAI/SKILLs/demo/SKILL.md');
+  expect(entries).toContain(`${CURRENT_ARCHIVE_ROOT}/.lobsterai-migration.json`);
+  expect(entries).toContain(`${CURRENT_ARCHIVE_ROOT}/${DB_FILENAME}`);
+  expect(entries).toContain(`${CURRENT_ARCHIVE_ROOT}/openclaw/state/openclaw.json`);
+  expect(entries).toContain(`${CURRENT_ARCHIVE_ROOT}/SKILLs/demo/SKILL.md`);
   expect(entries.some(entry => entry.includes('/Cache/'))).toBe(false);
   expect(entries.some(entry => entry.includes('/Code Cache/'))).toBe(false);
   expect(entries.some(entry => entry.includes('/cowork/'))).toBe(false);
@@ -322,7 +323,7 @@ test('createMigrationArchive excludes cache and log data and writes a manifest',
 
   const extractRoot = extractArchive(archivePath);
   const manifest = JSON.parse(
-    fs.readFileSync(path.join(extractRoot, 'LobsterAI', '.lobsterai-migration.json'), 'utf8'),
+    fs.readFileSync(path.join(extractRoot, CURRENT_ARCHIVE_ROOT, '.lobsterai-migration.json'), 'utf8'),
   ) as {
     format?: string;
     archiveRoot?: string;
@@ -330,7 +331,7 @@ test('createMigrationArchive excludes cache and log data and writes a manifest',
     openclawState?: { cronFileCount?: number; agentSessionFileCount?: number; openclawConfigExists?: boolean };
   };
   expect(manifest.format).toBe('lobsterai-data-migration');
-  expect(manifest.archiveRoot).toBe('LobsterAI');
+  expect(manifest.archiveRoot).toBe(CURRENT_ARCHIVE_ROOT);
   expect(manifest.sqlite?.rowCounts?.scheduled_task_meta).toBe(1);
   expect(manifest.sqlite?.tableContentChecksums?.im_config).toBeTruthy();
   expect(manifest.openclawState?.openclawConfigExists).toBe(true);
@@ -355,9 +356,9 @@ test('createMigrationArchive replaces the live sqlite database with the snapshot
   });
 
   const extractRoot = extractArchive(archivePath);
-  expect(readSqliteString(path.join(extractRoot, 'LobsterAI', DB_FILENAME), 'SELECT value FROM kv WHERE key = ?', ['auth_tokens']))
+  expect(readSqliteString(path.join(extractRoot, CURRENT_ARCHIVE_ROOT, DB_FILENAME), 'SELECT value FROM kv WHERE key = ?', ['auth_tokens']))
     .toContain('snapshot-refresh');
-  expect(fs.existsSync(path.join(extractRoot, 'LobsterAI', `${DB_FILENAME}-wal`))).toBe(false);
+  expect(fs.existsSync(path.join(extractRoot, CURRENT_ARCHIVE_ROOT, `${DB_FILENAME}-wal`))).toBe(false);
 });
 
 test('assertDataMigrationSqliteSnapshotMatchesLiveSync rejects stale snapshots that lost agents and provider keys', () => {
@@ -397,7 +398,7 @@ test('inspectMigrationArchive rejects legacy Windows PowerShell archive root', (
     cwd: root,
   }, ['AppData']);
 
-  expect(() => inspectMigrationArchiveSync(archivePath)).toThrow(/does not contain LobsterAI user data/);
+  expect(() => inspectMigrationArchiveSync(archivePath)).toThrow(/does not contain .* user data/);
 });
 
 test('inspectMigrationArchive rejects archives without a migration manifest', () => {
@@ -433,7 +434,7 @@ test('inspectMigrationArchive rejects archives whose manifest does not match sql
 
   createMigrationArchiveSync({ userDataPath: sourceUserData, outputPath: archivePath });
   const extractRoot = extractArchive(archivePath);
-  const manifestPath = path.join(extractRoot, 'LobsterAI', '.lobsterai-migration.json');
+  const manifestPath = path.join(extractRoot, CURRENT_ARCHIVE_ROOT, '.lobsterai-migration.json');
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as {
     sqlite?: { checksumSha256?: string };
   };
@@ -444,7 +445,7 @@ test('inspectMigrationArchive rejects archives whose manifest does not match sql
     gzip: true,
     file: tamperedArchivePath,
     cwd: extractRoot,
-  }, ['LobsterAI']);
+  }, [CURRENT_ARCHIVE_ROOT]);
 
   expect(() => inspectMigrationArchiveSync(tamperedArchivePath)).toThrow(/sqlite checksum mismatch/);
 });
@@ -701,25 +702,25 @@ test('performPendingDataMigrationRestoreSync replaces data in place and preserve
 
   createMigrationArchiveSync({ userDataPath: sourceUserData, outputPath: archivePath });
   const extractRoot = extractArchive(archivePath);
-  writeFile(path.join(extractRoot, 'LobsterAI', 'backups', 'sqlite', 'snapshots', 'lobsterai-latest.sqlite'), 'legacy-source-backup');
-  writeFile(path.join(extractRoot, 'LobsterAI', 'sqlite-backups', 'lobsterai-latest.sqlite'), 'legacy-source-legacy-backup');
-  writeFile(path.join(extractRoot, 'LobsterAI', 'cowork', 'bin', 'node.cmd'), 'legacy-source-shim');
-  writeFile(path.join(extractRoot, 'LobsterAI', 'install-timing.log'), 'legacy-source-install-log');
-  writeFile(path.join(extractRoot, 'LobsterAI', 'skill-migrate.log'), 'legacy-source-skill-migrate-log');
-  writeFile(path.join(extractRoot, 'LobsterAI', 'Dictionaries', 'source.bdic'), 'legacy-source-dictionary');
-  writeFile(path.join(extractRoot, 'LobsterAI', 'Local Storage', 'leveldb', 'source.log'), 'legacy-source-local-storage');
-  writeFile(path.join(extractRoot, 'LobsterAI', 'Preferences'), 'legacy-source-preferences');
-  writeFile(path.join(extractRoot, 'LobsterAI', 'Session Storage', 'leveldb', 'source.log'), 'legacy-source-session-storage');
-  writeFile(path.join(extractRoot, 'LobsterAI', 'openclaw', 'logs', 'gateway-2026-06-10.log'), 'legacy-source-gateway-log');
-  writeFile(path.join(extractRoot, 'LobsterAI', 'openclaw', 'mcp-packages', 'demo', 'node_modules', 'native.node'), 'legacy-source-native');
-  writeFile(path.join(extractRoot, 'LobsterAI', 'openclaw', 'state', 'logs', 'commands.log'), 'legacy-source-commands-log');
-  writeFile(path.join(extractRoot, 'LobsterAI', 'runtimes', 'python', 'python.exe'), 'legacy-source-runtime');
+  writeFile(path.join(extractRoot, CURRENT_ARCHIVE_ROOT, 'backups', 'sqlite', 'snapshots', 'lobsterai-latest.sqlite'), 'legacy-source-backup');
+  writeFile(path.join(extractRoot, CURRENT_ARCHIVE_ROOT, 'sqlite-backups', 'lobsterai-latest.sqlite'), 'legacy-source-legacy-backup');
+  writeFile(path.join(extractRoot, CURRENT_ARCHIVE_ROOT, 'cowork', 'bin', 'node.cmd'), 'legacy-source-shim');
+  writeFile(path.join(extractRoot, CURRENT_ARCHIVE_ROOT, 'install-timing.log'), 'legacy-source-install-log');
+  writeFile(path.join(extractRoot, CURRENT_ARCHIVE_ROOT, 'skill-migrate.log'), 'legacy-source-skill-migrate-log');
+  writeFile(path.join(extractRoot, CURRENT_ARCHIVE_ROOT, 'Dictionaries', 'source.bdic'), 'legacy-source-dictionary');
+  writeFile(path.join(extractRoot, CURRENT_ARCHIVE_ROOT, 'Local Storage', 'leveldb', 'source.log'), 'legacy-source-local-storage');
+  writeFile(path.join(extractRoot, CURRENT_ARCHIVE_ROOT, 'Preferences'), 'legacy-source-preferences');
+  writeFile(path.join(extractRoot, CURRENT_ARCHIVE_ROOT, 'Session Storage', 'leveldb', 'source.log'), 'legacy-source-session-storage');
+  writeFile(path.join(extractRoot, CURRENT_ARCHIVE_ROOT, 'openclaw', 'logs', 'gateway-2026-06-10.log'), 'legacy-source-gateway-log');
+  writeFile(path.join(extractRoot, CURRENT_ARCHIVE_ROOT, 'openclaw', 'mcp-packages', 'demo', 'node_modules', 'native.node'), 'legacy-source-native');
+  writeFile(path.join(extractRoot, CURRENT_ARCHIVE_ROOT, 'openclaw', 'state', 'logs', 'commands.log'), 'legacy-source-commands-log');
+  writeFile(path.join(extractRoot, CURRENT_ARCHIVE_ROOT, 'runtimes', 'python', 'python.exe'), 'legacy-source-runtime');
   tar.create({
     sync: true,
     gzip: true,
     file: archivePath,
     cwd: extractRoot,
-  }, ['LobsterAI']);
+  }, [CURRENT_ARCHIVE_ROOT]);
   writePendingRestoreRequestSync(targetUserData, archivePath);
 
   const result = performPendingDataMigrationRestoreSync({

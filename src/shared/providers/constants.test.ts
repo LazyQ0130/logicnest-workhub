@@ -3,6 +3,7 @@ import { describe,expect, test } from 'vitest';
 import {
   ApiFormat,
   OpenClawProviderId,
+  ProviderCategory,
   ProviderName,
   ProviderRegistry,
 } from './constants';
@@ -245,6 +246,53 @@ describe('ProviderRegistry', () => {
   test('idsForEnLocale has no duplicates', () => {
     const en = ProviderRegistry.idsForEnLocale();
     expect(new Set(en).size).toBe(en.length);
+  });
+
+  test('idsByCategory returns providers in Settings display order', () => {
+    expect(ProviderRegistry.idsByCategory(ProviderCategory.International)).toEqual([
+      ProviderName.OpenAI,
+      ProviderName.Gemini,
+      ProviderName.Anthropic,
+      ProviderName.OpenRouter,
+      ProviderName.Xai,
+      ProviderName.Copilot,
+    ]);
+    expect(ProviderRegistry.idsByCategory(ProviderCategory.Domestic)).toEqual([
+      ProviderName.DeepSeek,
+      ProviderName.Moonshot,
+      ProviderName.Qwen,
+      ProviderName.Zhipu,
+      ProviderName.Minimax,
+      ProviderName.Volcengine,
+      ProviderName.Youdaozhiyun,
+      ProviderName.Qianfan,
+      ProviderName.StepFun,
+      ProviderName.Xiaomi,
+    ]);
+    expect(ProviderRegistry.idsByCategory(ProviderCategory.Local)).toEqual([
+      ProviderName.Ollama,
+      ProviderName.LmStudio,
+    ]);
+    expect(ProviderRegistry.idsByCategory(ProviderCategory.Custom)).toEqual([]);
+  });
+
+  test('provider categories cover every built-in provider exactly once', () => {
+    const categorized = [
+      ...ProviderRegistry.idsByCategory(ProviderCategory.International),
+      ...ProviderRegistry.idsByCategory(ProviderCategory.Domestic),
+      ...ProviderRegistry.idsByCategory(ProviderCategory.Local),
+    ];
+
+    expect(categorized).toHaveLength(18);
+    expect(new Set(categorized).size).toBe(categorized.length);
+    expect(new Set(categorized)).toEqual(new Set(ProviderRegistry.providerIds));
+  });
+
+  test('getCategory resolves built-in providers', () => {
+    expect(ProviderRegistry.getCategory(ProviderName.OpenAI)).toBe(ProviderCategory.International);
+    expect(ProviderRegistry.getCategory(ProviderName.DeepSeek)).toBe(ProviderCategory.Domestic);
+    expect(ProviderRegistry.getCategory(ProviderName.Ollama)).toBe(ProviderCategory.Local);
+    expect(ProviderRegistry.getCategory('custom_0')).toBeUndefined();
   });
 
   test('every definition has non-empty defaultBaseUrl', () => {

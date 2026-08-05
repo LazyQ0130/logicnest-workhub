@@ -537,11 +537,11 @@ export interface MacSwapPaths {
  * LaunchServices ignores them.
  */
 export function buildMacSwapPaths(targetApp: string, timestamp: number): MacSwapPaths {
-  const dir = path.dirname(targetApp);
-  const base = path.basename(targetApp);
+  const dir = path.posix.dirname(targetApp);
+  const base = path.posix.basename(targetApp);
   return {
-    staging: path.join(dir, `.${base}${MAC_SWAP_STAGING_INFIX}${timestamp}`),
-    backup: path.join(dir, `.${base}${MAC_SWAP_BACKUP_INFIX}${timestamp}`),
+    staging: path.posix.join(dir, `.${base}${MAC_SWAP_STAGING_INFIX}${timestamp}`),
+    backup: path.posix.join(dir, `.${base}${MAC_SWAP_BACKUP_INFIX}${timestamp}`),
   };
 }
 
@@ -647,8 +647,8 @@ async function removeDirBestEffort(dir: string): Promise<void> {
  * (hidden directory, disk space only).
  */
 async function cleanupSwapLeftovers(targetApp: string): Promise<void> {
-  const targetDir = path.dirname(targetApp);
-  const base = path.basename(targetApp);
+  const targetDir = path.posix.dirname(targetApp);
+  const base = path.posix.basename(targetApp);
   const prefixes = [`.${base}${MAC_SWAP_STAGING_INFIX}`, `.${base}${MAC_SWAP_BACKUP_INFIX}`];
   let entries: string[];
   try {
@@ -661,7 +661,7 @@ async function cleanupSwapLeftovers(targetApp: string): Promise<void> {
     if (!prefixes.some((prefix) => entry.startsWith(prefix))) {
       continue;
     }
-    const leftover = path.join(targetDir, entry);
+    const leftover = path.posix.join(targetDir, entry);
     console.log(`[AppUpdate] removing swap leftover: ${leftover}`);
     await removeDirBestEffort(leftover);
   }
@@ -801,7 +801,7 @@ async function installMacDmg(dmgPath: string): Promise<void> {
       await cleanupStaleAttachment(dmgPath, attachedDevEntries);
       attachedDevEntries = [];
 
-      explicitMountDir = path.join(
+      explicitMountDir = path.posix.join(
         app.getPath('userData'),
         'updates',
         `${MAC_UPDATE_MOUNT_DIR_PREFIX}${Date.now()}`,
@@ -832,12 +832,12 @@ async function installMacDmg(dmgPath: string): Promise<void> {
       throw new Error('No .app bundle found in DMG');
     }
 
-    const sourceApp = path.join(mountPoint, appBundle);
+    const sourceApp = path.posix.join(mountPoint, appBundle);
     console.log(`[AppUpdate] Source app: ${sourceApp}`);
 
     // Determine target path: current running app location
     // process.resourcesPath is .app/Contents/Resources, go up 3 levels
-    const currentAppPath = path.resolve(process.resourcesPath, '..', '..', '..');
+    const currentAppPath = path.posix.resolve(process.resourcesPath, '..', '..', '..');
     let targetApp: string;
 
     if (currentAppPath.endsWith('.app')) {
@@ -869,13 +869,13 @@ async function installMacDmg(dmgPath: string): Promise<void> {
     }
 
     // Relaunch from the new app location
-    const executablePath = path.join(targetApp, 'Contents', 'MacOS');
+    const executablePath = path.posix.join(targetApp, 'Contents', 'MacOS');
     const execEntries = await fs.promises.readdir(executablePath);
     const executable = execEntries[0]; // Should be the app executable
 
     if (executable) {
-      console.log(`[AppUpdate] Relaunching: ${path.join(executablePath, executable)}`);
-      app.relaunch({ execPath: path.join(executablePath, executable) });
+      console.log(`[AppUpdate] Relaunching: ${path.posix.join(executablePath, executable)}`);
+      app.relaunch({ execPath: path.posix.join(executablePath, executable) });
     } else {
       console.log('[AppUpdate] Relaunching (default)');
       app.relaunch();

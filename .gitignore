@@ -3,11 +3,21 @@ build/*
 !build/icons/
 !build/icons/**
 release/
+release-*/
 node_modules
 dist
 dist-electron
 .DS_Store
-.env 
+.env
+.env.*
+!.env.example
+services/license-server/.env
+services/license-server/.env.*
+!services/license-server/.env.example
+services/license-server/.dev-secrets/
+services/admin-web/.env
+services/admin-web/.env.*
+!services/admin-web/.env.example
 .claude/
 __pycache__/
 .codebuddy/
@@ -33,6 +43,9 @@ SKILLs/**/.server.pid
 SKILLs/**/.venv/
 
 package-lock.json
+!package-lock.json
+!services/license-server/package-lock.json
+!services/admin-web/package-lock.json
 
 nul
 .work.env

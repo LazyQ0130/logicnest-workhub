@@ -326,7 +326,16 @@ describe('AppUpdateCoordinator', () => {
     const symlinkPath = path.join(updatesDir, 'lobsterai-update-auto-2.exe');
     const targetBytes = 'symlink-target';
     fs.writeFileSync(targetPath, targetBytes);
-    fs.symlinkSync(targetPath, symlinkPath);
+    fs.linkSync(targetPath, symlinkPath);
+    const realLstatSync = fs.lstatSync.bind(fs);
+    const lstatSpy = vi.spyOn(fs, 'lstatSync').mockImplementation((filePath, options) => {
+      const stat = realLstatSync(filePath, options as never);
+      if (path.resolve(String(filePath)) !== path.resolve(symlinkPath)) return stat;
+      return {
+        ...stat,
+        isSymbolicLink: () => true,
+      } as typeof stat;
+    });
     store.set(readyFileStoreKey(AppUpdateSource.Auto), {
       version: READY_VERSION,
       filePath: symlinkPath,
@@ -348,6 +357,7 @@ describe('AppUpdateCoordinator', () => {
     });
 
     const coordinator = new AppUpdateCoordinator(store);
+    lstatSpy.mockRestore();
 
     expect(coordinator.getState().status).toBe(AppUpdateStatus.Idle);
     expect(fs.readFileSync(targetPath, 'utf8')).toBe(targetBytes);

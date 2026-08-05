@@ -26,9 +26,11 @@ import { mergeNoProxyValue } from './noProxyEnv';
 import { getCodexHomeDir } from './openaiCodexAuth';
 import { migrateLegacyCronStorageWithDoctor } from './openclawCronLegacyMigration';
 import { cleanupStaleThirdPartyPluginsFromBundledDir, listLocalOpenClawExtensionIds,syncLocalOpenClawExtensionsIntoRuntime } from './openclawLocalExtensions';
+import { OpenClawStartupLogFilter } from './openclawLogFilter';
 import { migrateAllFtsOnlyMemoryIndexes } from './openclawMemoryIndexMigration';
 import { ensureOpenClawWorkerShims } from './openclawWorkerShims';
 import { appendPythonRuntimeToEnv } from './pythonRuntime';
+import { stripAnsiControlCharacters } from './sanitizeForLog';
 
 const gwDiagTs = (): string => {
   const d = new Date();
@@ -211,6 +213,7 @@ export function buildOpenClawCompileCacheEnv(compileCacheDir: string): NodeJS.Pr
 }
 
 export class OpenClawEngineManager extends EventEmitter {
+  private readonly startupLogFilter = new OpenClawStartupLogFilter();
   private readonly baseDir: string;
   private readonly logsDir: string;
   private readonly stateDir: string;
@@ -571,13 +574,17 @@ export class OpenClawEngineManager extends EventEmitter {
       // bundled-channel-entry contract.  Third-party plugins (in extensions/)
       // are discovered separately via plugins.load.paths in openclaw.json.
       OPENCLAW_BUNDLED_PLUGINS_DIR: path.join(runtime.root, 'dist', 'extensions'),
-      // Disable Bonjour/mDNS LAN discovery advertising.  LobsterAI is a
+      // Disable Bonjour/mDNS LAN discovery advertising.  LogicNest is a
       // desktop app with a loopback-only gateway — LAN service broadcast is
       // unnecessary and its watchdog can flood stderr with re-advertise
       // warnings on Windows.  See openclaw/openclaw#33609, #63153.
       OPENCLAW_DISABLE_BONJOUR: '1',
-      // Enable debug-level logging so gateway emits phase-level detail during startup.
-      OPENCLAW_LOG_LEVEL: 'debug',
+      // Updates are controlled by the signed desktop release, never by the
+      // bundled gateway at startup.
+      OPENCLAW_NO_AUTO_UPDATE: '1',
+      // Production gateway logs must not capture prompts, tool arguments or
+      // provider headers at debug level.
+      OPENCLAW_LOG_LEVEL: 'warn',
       // Enable V8 compile cache for both CJS and ESM modules.
       // This env var works for import() (ESM), unlike enableCompileCache() which is CJS-only.
       ...buildOpenClawCompileCacheEnv(compileCacheDir),
@@ -654,7 +661,9 @@ export class OpenClawEngineManager extends EventEmitter {
       env,
     });
 
-    const forkArgs = ['gateway', '--bind', 'loopback', '--port', String(port), '--token', token, '--verbose'];
+    // Keep the token in a protected environment variable/config placeholder;
+    // command-line arguments are visible to other local processes.
+    const forkArgs = ['gateway', '--bind', 'loopback', '--port', String(port)];
     const gatewayExecArgv = buildOpenClawGatewayExecArgv(process.env.NODE_OPTIONS);
     if (gatewayExecArgv.length > 0) {
       console.log(`[OpenClaw] gateway V8 old-space limit set to ${OPENCLAW_GATEWAY_MAX_OLD_SPACE_MB}MB`);
@@ -1164,28 +1173,16 @@ export class OpenClawEngineManager extends EventEmitter {
       `}\n` +
       `// Fallback: load the original multi-file dist.\n` +
       `function _loadFallback() {\n` +
-      `  try {\n` +
-      `    try {\n` +
-      `      const wf = require('./dist/warning-filter.js');\n` +
-      `      if (typeof wf.installProcessWarningFilter === 'function') {\n` +
-      `        wf.installProcessWarningFilter();\n` +
-      `      }\n` +
-      `    } catch (_) {}\n` +
-      `    require('./dist/entry.js');\n` +
-      `    process.stderr.write('[openclaw-launcher] require(entry.js) ok (' + (Date.now() - t0) + 'ms)\\n');\n` +
+      `  const entryPath = path.join(__dirname, 'dist', 'entry.js');\n` +
+      `  const importUrl = pathToFileURL(entryPath).href;\n` +
+      `  process.stderr.write('[openclaw-launcher] loading multi-file ESM entry via import(): ' + importUrl + '\\n');\n` +
+      `  import(importUrl).then(() => {\n` +
+      `    process.stderr.write('[openclaw-launcher] import(entry.js) ok (' + (Date.now() - t0) + 'ms)\\n');\n` +
       `    try { require('node:module').flushCompileCache(); } catch (_) {}\n` +
-      `  } catch (err) {\n` +
-      `    process.stderr.write('[openclaw-launcher] require(entry.js) failed (' + (Date.now() - t0) + 'ms): ' + err.message + '\\n');\n` +
-      `    const entryPath = path.join(__dirname, 'dist', 'entry.js');\n` +
-      `    const importUrl = pathToFileURL(entryPath).href;\n` +
-      `    process.stderr.write('[openclaw-launcher] falling back to import(): ' + importUrl + '\\n');\n` +
-      `    import(importUrl).then(() => {\n` +
-      `      process.stderr.write('[openclaw-launcher] import() ok (' + (Date.now() - t0) + 'ms)\\n');\n` +
-      `    }).catch((err2) => {\n` +
-      `      process.stderr.write('[openclaw-launcher] ERROR (' + (Date.now() - t0) + 'ms): ' + (err2.stack || err2) + '\\n');\n` +
-      `      process.exit(1);\n` +
-      `    });\n` +
-      `  }\n` +
+      `  }).catch((err) => {\n` +
+      `    process.stderr.write('[openclaw-launcher] ERROR (' + (Date.now() - t0) + 'ms): ' + (err.stack || err) + '\\n');\n` +
+      `    process.exit(1);\n` +
+      `  });\n` +
       `}\n`;
 
     try {
@@ -1588,7 +1585,7 @@ export class OpenClawEngineManager extends EventEmitter {
     ensureDir(this.logsDir);
     this.pruneGatewayLogsIfNeeded();
     const appendRecentOutput = (chunk: Buffer | string, stream: 'stdout' | 'stderr') => {
-      const text = typeof chunk === 'string' ? chunk : chunk.toString();
+      const text = stripAnsiControlCharacters(typeof chunk === 'string' ? chunk : chunk.toString());
       const lines = text
         .split(/\r?\n/)
         .map((line) => line.trimEnd())
@@ -1605,7 +1602,7 @@ export class OpenClawEngineManager extends EventEmitter {
     const appendLog = (chunk: Buffer | string, stream: 'stdout' | 'stderr') => {
       appendRecentOutput(chunk, stream);
       this.pruneGatewayLogsIfNeeded();
-      const text = typeof chunk === 'string' ? chunk : chunk.toString();
+      const text = stripAnsiControlCharacters(typeof chunk === 'string' ? chunk : chunk.toString());
       const line = `[${new Date().toISOString()}] [${stream}] ${text}`;
       fs.appendFile(this.getGatewayLogPath(), line, () => {
         // best-effort log append
@@ -1624,14 +1621,17 @@ export class OpenClawEngineManager extends EventEmitter {
     };
 
     child.stdout?.on('data', (chunk) => {
-      appendLog(chunk, 'stdout');
-      const text = typeof chunk === 'string' ? chunk : chunk.toString();
+      const text = stripAnsiControlCharacters(typeof chunk === 'string' ? chunk : chunk.toString());
+      if (!text) return;
+      appendLog(text, 'stdout');
       logStartupMilestone(text);
       console.log(`[OpenClaw stdout] ${OpenClawEngineManager.rewriteUtcTimestamps(text)}`);
     });
     child.stderr?.on('data', (chunk) => {
-      appendLog(chunk, 'stderr');
-      const text = typeof chunk === 'string' ? chunk : chunk.toString();
+      const rawText = stripAnsiControlCharacters(typeof chunk === 'string' ? chunk : chunk.toString());
+      const text = this.startupLogFilter.filter(rawText);
+      if (!text) return;
+      appendLog(text, 'stderr');
       const recentOutput = (this.gatewayRecentOutput.get(child) ?? []).join('\n');
       this.recordGatewayFatalFailure(child, recentOutput);
       logStartupMilestone(text);

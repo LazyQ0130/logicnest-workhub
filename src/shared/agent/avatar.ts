@@ -9,7 +9,7 @@ export const AgentAvatarIconSeparator = {
 } as const;
 
 export const AgentAvatarSvg = {
-  Lobster: 'lobster',
+  Owl: 'owl',
   Code: 'code',
   Repair: 'repair',
   Briefcase: 'briefcase',
@@ -43,6 +43,10 @@ export const AgentAvatarSvg = {
 
 export type AgentAvatarSvg = typeof AgentAvatarSvg[keyof typeof AgentAvatarSvg];
 
+export const LegacyAgentAvatarSvg = {
+  Lobster: 'lobster',
+} as const;
+
 export interface DesignedAgentAvatar {
   svg: AgentAvatarSvg;
 }
@@ -52,7 +56,7 @@ const AGENT_AVATAR_PART_COUNT = 2;
 const AGENT_AVATAR_SVGS = new Set<string>(Object.values(AgentAvatarSvg));
 
 export const DefaultAgentAvatar = {
-  svg: AgentAvatarSvg.Lobster,
+  svg: AgentAvatarSvg.Owl,
 } as const satisfies DesignedAgentAvatar;
 
 export const isAgentAvatarSvg = (value: string): value is AgentAvatarSvg => {
@@ -85,6 +89,7 @@ export const parseAgentAvatarIcon = (value: string | null | undefined): Designed
 
   const [format, svg] = parts;
   if (format !== AgentAvatarIconFormat.Svg) return null;
+  if (svg === LegacyAgentAvatarSvg.Lobster) return { svg: AgentAvatarSvg.Owl };
   if (!isAgentAvatarSvg(svg)) return null;
 
   return { svg };

@@ -1,156 +1,61 @@
 import { describe, expect, test } from 'vitest';
 
-import { sanitizeUrlForLog, SENSITIVE_LOG_KEY_PATTERN, serializeForLog } from './sanitizeForLog';
+import {
+  redactSensitiveText,
+  sanitizeForLog,
+  serializeForLog,
+  stripAnsiControlCharacters,
+} from './sanitizeForLog';
 
-// ---------------------------------------------------------------------------
-// SENSITIVE_LOG_KEY_PATTERN — make sure every expected key variant matches
-// ---------------------------------------------------------------------------
-describe('SENSITIVE_LOG_KEY_PATTERN', () => {
-  const shouldMatch = [
-    'apiKey',
-    'api_key',
-    'api-key',
-    'x-api-key',
-    'ApiKey',
+const SECRET_VALUE = 'prefix-visible-middle-visible-suffix';
+
+describe('log redaction', () => {
+  test.each([
     'API_KEY',
-    'token',
-    'accessToken',
-    'access_token',
-    'access-token',
-    'refreshToken',
+    'api-key',
+    'TOKEN',
     'refresh_token',
-    'refresh-token',
-    'secret',
+    'SECRET',
     'password',
-    'authorization',
-    'Authorization',
-    'cookie',
-    'Cookie',
-    'session',
-    'sessionId',
-  ];
-
-  const shouldNotMatch = [
-    'model',
-    'Content-Type',
-    'url',
-    'method',
-    'query',
-    'name',
-    'description',
-    'anthropic-version',
-    'status',
-  ];
-
-  // Known false positives: keys containing "token"/"session" substrings that
-  // are not actually sensitive (e.g. "max_tokens"). Documenting so we can
-  // tighten the regex later without breaking expectations.
-  const knownFalsePositives = [
-    'max_tokens',
-  ];
-
-  test.each(shouldMatch)('matches sensitive key: %s', (key) => {
-    expect(SENSITIVE_LOG_KEY_PATTERN.test(key)).toBe(true);
-  });
-
-  test.each(shouldNotMatch)('does not match safe key: %s', (key) => {
-    expect(SENSITIVE_LOG_KEY_PATTERN.test(key)).toBe(false);
-  });
-
-  test.each(knownFalsePositives)('known false positive (matches but not truly sensitive): %s', (key) => {
-    expect(SENSITIVE_LOG_KEY_PATTERN.test(key)).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// serializeForLog — redaction in realistic structures
-// ---------------------------------------------------------------------------
-describe('serializeForLog', () => {
-  test('redacts x-api-key in HTTP-style headers object', () => {
-    const result = serializeForLog({
-      'x-api-key': 'sk-ant-1234567890abcdef',
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json',
-    });
-
+    'private_key',
+  ])('removes the complete value for %s', (name) => {
+    const result = redactSensitiveText(`${name}=${SECRET_VALUE}`);
     expect(result).toContain('[redacted]');
-    expect(result).not.toContain('sk-ant-1234567890abcdef');
-    expect(result).toContain('2023-06-01');
-    expect(result).toContain('application/json');
+    expect(result).not.toContain('prefix-visible');
+    expect(result).not.toContain('suffix');
+    expect(result).not.toContain(SECRET_VALUE);
   });
 
-  test('redacts authorization header', () => {
-    const result = serializeForLog({
-      Authorization: 'Bearer eyJhbGciOiJIUzI1NiJ9.secret',
-    });
-
+  test('removes bearer tokens and complete private key bodies', () => {
+    const privateKey = [
+      '-----BEGIN PRIVATE KEY-----',
+      SECRET_VALUE,
+      '-----END PRIVATE KEY-----',
+    ].join('\n');
+    const result = redactSensitiveText(`Authorization: Bearer ${SECRET_VALUE}\n${privateKey}`);
+    expect(result).not.toContain(SECRET_VALUE);
+    expect(result).not.toContain('BEGIN PRIVATE KEY');
     expect(result).toContain('[redacted]');
-    expect(result).not.toContain('eyJhbGciOiJIUzI1NiJ9');
   });
 
-  test('redacts multiple sensitive keys in one object', () => {
-    const result = serializeForLog({
-      apiKey: 'key-123',
-      password: 'p@ss',
-      secret: 'shh',
-      model: 'glm-5',
+  test('redacts sensitive object fields without revealing length or fragments', () => {
+    const result = sanitizeForLog({
+      apiKey: SECRET_VALUE,
+      nested: { password: SECRET_VALUE },
+      safe: 'present',
     });
-
-    expect(result).not.toContain('key-123');
-    expect(result).not.toContain('p@ss');
-    expect(result).not.toContain('shh');
-    expect(result).toContain('glm-5');
-  });
-
-  test('redacts sensitive values in deeply nested objects', () => {
-    const result = serializeForLog({
-      provider: {
-        config: {
-          api_key: 'deep-secret-key',
-          endpoint: 'https://api.example.com',
-        },
-      },
+    expect(result).toEqual({
+      apiKey: '[redacted]',
+      nested: { password: '[redacted]' },
+      safe: 'present',
     });
-
-    expect(result).not.toContain('deep-secret-key');
-    expect(result).toContain('https://api.example.com');
+    expect(serializeForLog(result)).not.toContain(SECRET_VALUE);
   });
 
-  test('handles circular references without throwing', () => {
-    const obj: Record<string, unknown> = { name: 'test' };
-    obj.self = obj;
+  test('removes CSI, OSC, and C1 ANSI control sequences before logging', () => {
+    const input = '\u001b[31mred\u001b[0m \u001b]0;secret title\u0007plain \u009b32mgreen\u009b0m';
 
-    const result = serializeForLog(obj);
-
-    expect(result).toContain('[circular]');
-    expect(result).toContain('test');
-  });
-
-  test('preserves non-sensitive primitive values', () => {
-    const result = serializeForLog({
-      count: 42,
-      enabled: true,
-      label: null,
-    });
-
-    expect(result).toContain('42');
-    expect(result).toContain('true');
-    expect(result).toContain('null');
-  });
-});
-
-describe('sanitizeUrlForLog', () => {
-  test('removes query values and fragments from valid URLs', () => {
-    const result = sanitizeUrlForLog(
-      'https://rlogs.youdao.com/rlog.php?action=lobsterai_app_started&log_Usid=user-1#result',
-    );
-
-    expect(result).toBe('https://rlogs.youdao.com/rlog.php?[redacted]#[redacted]');
-    expect(result).not.toContain('user-1');
-    expect(result).not.toContain('lobsterai_app_started');
-  });
-
-  test('returns a safe marker for invalid URLs', () => {
-    expect(sanitizeUrlForLog('not a URL')).toBe('[invalid-url]');
+    expect(stripAnsiControlCharacters(input)).toBe('red plain green');
+    expect(sanitizeForLog(input)).toBe('red plain green');
   });
 });

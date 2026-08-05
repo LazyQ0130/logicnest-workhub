@@ -7,7 +7,7 @@
 import Database from 'better-sqlite3';
 import { EventEmitter } from 'events';
 
-import { classifyErrorKey } from '../../common/coworkErrorClassify';
+import { type ActivePlatform,PlatformRegistry } from '../../shared/platform';
 import type { CoworkStore } from '../coworkStore';
 import { t } from '../i18n';
 import type { CoworkRuntime } from '../libs/agentEngine/types';
@@ -27,7 +27,6 @@ import type {
 } from './imScheduledTaskHandler';
 import { createIMScheduledTaskRequestDetector } from './imScheduledTaskHandler';
 import { IMStore } from './imStore';
-import { NimGateway } from './nimGateway';
 import {
   IMConnectivityCheck,
   IMConnectivityTestResult,
@@ -73,6 +72,7 @@ interface WeixinQrLoginWaitResult {
 interface OpenClawChannelAccountSnapshot {
   accountId?: unknown;
   running?: unknown;
+  connected?: unknown;
   configured?: unknown;
   enabled?: unknown;
   lastError?: unknown;
@@ -114,6 +114,11 @@ function isWeixinAlreadyConnectedMessage(message?: string): boolean {
   return Boolean(message?.includes(WEIXIN_ALREADY_CONNECTED_MESSAGE));
 }
 
+function isWeixinLoginProviderUnavailable(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /web login provider is not available|method not found.*web\.login/iu.test(message);
+}
+
 export interface IMGatewayManagerOptions {
   coworkRuntime?: CoworkRuntime;
   coworkStore?: CoworkStore;
@@ -125,6 +130,8 @@ export interface IMGatewayManagerOptions {
   ensureOpenClawGatewayConnected?: () => Promise<void>;
   getOpenClawGatewayClient?: () => GatewayClientLike | null;
   ensureOpenClawGatewayReady?: () => Promise<void>;
+  prepareWeixinLoginProvider?: () => Promise<void>;
+  releaseWeixinLoginProvider?: (connected: boolean) => Promise<void>;
   getOpenClawSessionKeysForCoworkSession?: (sessionId: string) => string[];
   createScheduledTask?: (params: {
     sessionId: string;
@@ -134,19 +141,19 @@ export interface IMGatewayManagerOptions {
 }
 
 export class IMGatewayManager extends EventEmitter {
-  private nimGateway: NimGateway;
   private imStore: IMStore;
   private chatHandler: IMChatHandler | null = null;
   private coworkHandler: IMCoworkHandler | null = null;
   private getLLMConfig: (() => Promise<any>) | null = null;
   private getSkillsPrompt: (() => Promise<string | null>) | null = null;
-  private ensureCoworkReady: (() => Promise<void>) | null = null;
   private syncOpenClawConfig:
     | ((reason?: string, options?: { restartGatewayIfRunning?: boolean }) => Promise<void>)
     | null = null;
   private ensureOpenClawGatewayConnected: (() => Promise<void>) | null = null;
   private getOpenClawGatewayClient: (() => GatewayClientLike | null) | null = null;
   private ensureOpenClawGatewayReady: (() => Promise<void>) | null = null;
+  private prepareWeixinLoginProvider: (() => Promise<void>) | null = null;
+  private releaseWeixinLoginProvider: ((connected: boolean) => Promise<void>) | null = null;
   private getOpenClawSessionKeysForCoworkSession: ((sessionId: string) => string[]) | null = null;
   private createScheduledTask:
     | ((params: {
@@ -169,18 +176,17 @@ export class IMGatewayManager extends EventEmitter {
     super();
 
     this.imStore = new IMStore(db);
-    this.nimGateway = new NimGateway();
-
     // Store Cowork dependencies if provided
     if (options?.coworkRuntime && options?.coworkStore) {
       this.coworkRuntime = options.coworkRuntime;
       this.coworkStore = options.coworkStore;
     }
-    this.ensureCoworkReady = options?.ensureCoworkReady ?? null;
     this.syncOpenClawConfig = options?.syncOpenClawConfig ?? null;
     this.ensureOpenClawGatewayConnected = options?.ensureOpenClawGatewayConnected ?? null;
     this.getOpenClawGatewayClient = options?.getOpenClawGatewayClient ?? null;
     this.ensureOpenClawGatewayReady = options?.ensureOpenClawGatewayReady ?? null;
+    this.prepareWeixinLoginProvider = options?.prepareWeixinLoginProvider ?? null;
+    this.releaseWeixinLoginProvider = options?.releaseWeixinLoginProvider ?? null;
     this.getOpenClawSessionKeysForCoworkSession = options?.getOpenClawSessionKeysForCoworkSession ?? null;
     this.createScheduledTask = options?.createScheduledTask ?? null;
 
@@ -239,103 +245,6 @@ export class IMGatewayManager extends EventEmitter {
     this.getLLMConfig = options.getLLMConfig;
     this.getSkillsPrompt = options.getSkillsPrompt ?? null;
 
-    // Set up message handlers for gateways
-    this.setupMessageHandlers();
-  }
-
-  /**
-   * Set up message handlers for both gateways
-   */
-  private setupMessageHandlers(): void {
-    const messageHandler = async (
-      message: IMMessage,
-      replyFn: (text: string) => Promise<void>
-    ): Promise<void> => {
-      // Persist notification target whenever we receive a message
-      this.persistNotificationTarget(message.platform);
-
-      try {
-        let response: string;
-
-        // Always use Cowork mode if handler is available
-        if (this.coworkHandler) {
-          if (this.ensureCoworkReady) {
-            await this.ensureCoworkReady();
-          }
-          console.log('[IMGatewayManager] Using Cowork mode for message processing');
-          response = await this.coworkHandler.processMessage(message);
-        } else {
-          // Fallback to regular chat handler
-          if (!this.chatHandler) {
-            this.updateChatHandler();
-          }
-
-          if (!this.chatHandler) {
-            throw new Error('Chat handler not available');
-          }
-
-          response = await this.chatHandler.processMessage(message);
-        }
-
-        await replyFn(response);
-      } catch (error: any) {
-        console.error(`[IMGatewayManager] Error processing message: ${error.message}`);
-        // Don't send "Replaced by a newer IM request" error to user, just log it
-        if (error.message === 'Replaced by a newer IM request') {
-          return;
-        }
-        // Send error message to user
-        try {
-          const errorKey = classifyErrorKey(error.message);
-          const friendlyMessage = errorKey ? t(errorKey) : error.message;
-          await replyFn(`${t('imErrorPrefix')}: ${friendlyMessage}`);
-        } catch (replyError) {
-          console.error(`[IMGatewayManager] Failed to send error reply: ${replyError}`);
-        }
-      }
-    };
-
-    this.nimGateway.setMessageCallback(messageHandler);
-  }
-
-  /**
-   * Persist the notification target for a platform after receiving a message.
-   */
-  private persistNotificationTarget(platform: Platform): void {
-    try {
-      let target: any = null;
-      if (platform === 'nim') {
-        target = this.nimGateway.getNotificationTarget();
-      }
-      // WeCom runs via OpenClaw; notification target not managed locally
-      // Weixin runs via OpenClaw; notification target not managed locally
-      // POPO runs via OpenClaw; notification target not managed locally
-      if (target != null) {
-        this.imStore.setNotificationTarget(platform, target);
-      }
-    } catch (err: any) {
-      console.warn(`[IMGatewayManager] Failed to persist notification target for ${platform}:`, err.message);
-    }
-  }
-
-  /**
-   * Restore notification target from SQLite after gateway starts.
-   */
-  private restoreNotificationTarget(platform: Platform): void {
-    try {
-      const target = this.imStore.getNotificationTarget(platform);
-      if (target == null) return;
-
-      if (platform === 'nim') {
-        this.nimGateway.setNotificationTarget(target);
-      }
-      // WeCom runs via OpenClaw; notification target not managed locally
-      // Weixin runs via OpenClaw; notification target not managed locally
-      // POPO runs via OpenClaw; notification target not managed locally
-      console.log(`[IMGatewayManager] Restored notification target for ${platform}`);
-    } catch (err: any) {
-      console.warn(`[IMGatewayManager] Failed to restore notification target for ${platform}:`, err.message);
-    }
   }
 
   /**
@@ -483,7 +392,7 @@ export class IMGatewayManager extends EventEmitter {
       instances: (config.dingtalk?.instances || []).map(inst => ({
         instanceId: inst.instanceId,
         instanceName: inst.instanceName,
-        connected: Boolean(inst.enabled && inst.clientId && inst.clientSecret),
+        connected: false,
         startedAt: null as number | null,
         lastError: null as string | null,
         lastInboundAt: null as number | null,
@@ -495,7 +404,7 @@ export class IMGatewayManager extends EventEmitter {
       instances: (config.feishu?.instances || []).map(inst => ({
         instanceId: inst.instanceId,
         instanceName: inst.instanceName,
-        connected: Boolean(inst.enabled && inst.appId && inst.appSecret),
+        connected: false,
         startedAt: null as string | null,
         botOpenId: null as string | null,
         error: null as string | null,
@@ -511,7 +420,7 @@ export class IMGatewayManager extends EventEmitter {
         instances: (config.qq?.instances || []).map(inst => ({
           instanceId: inst.instanceId,
           instanceName: inst.instanceName,
-          connected: Boolean(inst.enabled && inst.appId && inst.appSecret),
+          connected: false,
           startedAt: null as number | null,
           lastError: null as string | null,
           lastInboundAt: null as number | null,
@@ -546,7 +455,7 @@ export class IMGatewayManager extends EventEmitter {
         instances: (config.wecom?.instances || []).map(inst => ({
           instanceId: inst.instanceId,
           instanceName: inst.instanceName,
-          connected: Boolean(inst.enabled && inst.botId && inst.secret),
+          connected: false,
           startedAt: null as number | null,
           lastError: null as string | null,
           botId: inst.botId || null,
@@ -555,7 +464,7 @@ export class IMGatewayManager extends EventEmitter {
         })),
       },
       weixin: {
-        connected: Boolean(config.weixin?.enabled),
+        connected: false,
         accountId: config.weixin?.accountId?.trim() || null,
         startedAt: null as number | null,
         lastError: null as string | null,
@@ -596,25 +505,83 @@ export class IMGatewayManager extends EventEmitter {
 
     try {
       const runtimeStatus = await this.requestOpenClawChannelsStatus(client);
-      const weixinAccount = this.pickWeixinAccountSnapshot(runtimeStatus, status.weixin.accountId);
-      if (!weixinAccount) return status;
-
-      const configured = weixinAccount.configured === true;
-      const running = weixinAccount.running === true;
-      const runtimeEnabled = weixinAccount.enabled !== false;
-      const localEnabled = this.getConfig().weixin?.enabled === true;
-      const accountId = readString(weixinAccount.accountId) ?? status.weixin.accountId ?? null;
-      status.weixin = {
-        ...status.weixin,
-        accountId,
-        connected: Boolean(localEnabled && (running || (runtimeEnabled && configured && status.weixin.connected))),
-        startedAt: readNumber(weixinAccount.lastStartAt),
-        lastError: readString(weixinAccount.lastError),
-        lastInboundAt: readNumber(weixinAccount.lastInboundAt),
-        lastOutboundAt: readNumber(weixinAccount.lastOutboundAt),
+      const config = this.getConfig();
+      const applyMultiInstanceRuntimeStatus = <T extends {
+        instanceId: string;
+        connected: boolean;
+        startedAt: number | string | null;
+        lastInboundAt: number | null;
+        lastOutboundAt: number | null;
+      }>(
+        channel: string,
+        instances: T[],
+        enabledById: ReadonlyMap<string, boolean>,
+        errorField: 'lastError' | 'error',
+        startedAtAsIso = false,
+      ): void => {
+        const accounts = this.getChannelAccountSnapshots(runtimeStatus, channel);
+        for (const instance of instances) {
+          const expectedAccountId = instance.instanceId.slice(0, 8);
+          const account = accounts.find(item => readString(item.accountId) === expectedAccountId)
+            ?? (instances.length === 1 ? accounts[0] : undefined);
+          const startedAt = readNumber(account?.lastStartAt);
+          Object.assign(instance, {
+            connected: Boolean(
+              enabledById.get(instance.instanceId)
+              && account?.enabled !== false
+              && (account?.connected === true || account?.running === true)),
+            startedAt: startedAtAsIso && startedAt ? new Date(startedAt).toISOString() : startedAt,
+            [errorField]: readString(account?.lastError),
+            lastInboundAt: readNumber(account?.lastInboundAt),
+            lastOutboundAt: readNumber(account?.lastOutboundAt),
+          });
+        }
       };
+
+      applyMultiInstanceRuntimeStatus(
+        DINGTALK_OPENCLAW_CHANNEL,
+        status.dingtalk.instances,
+        new Map(config.dingtalk.instances.map(instance => [instance.instanceId, instance.enabled])),
+        'lastError',
+      );
+      applyMultiInstanceRuntimeStatus(
+        'feishu',
+        status.feishu.instances,
+        new Map(config.feishu.instances.map(instance => [instance.instanceId, instance.enabled])),
+        'error',
+        true,
+      );
+      applyMultiInstanceRuntimeStatus(
+        'qqbot',
+        status.qq.instances,
+        new Map(config.qq.instances.map(instance => [instance.instanceId, instance.enabled])),
+        'lastError',
+      );
+      applyMultiInstanceRuntimeStatus(
+        'wecom',
+        status.wecom.instances,
+        new Map(config.wecom.instances.map(instance => [instance.instanceId, instance.enabled])),
+        'lastError',
+      );
+
+      const weixinAccount = this.pickWeixinAccountSnapshot(runtimeStatus, status.weixin.accountId);
+      if (weixinAccount) {
+        const accountId = readString(weixinAccount.accountId) ?? status.weixin.accountId ?? null;
+        status.weixin = {
+          ...status.weixin,
+          accountId,
+          connected: Boolean(
+            config.weixin?.enabled
+            && weixinAccount.enabled !== false
+            && (weixinAccount.connected === true || weixinAccount.running === true)),
+          startedAt: readNumber(weixinAccount.lastStartAt),
+          lastError: readString(weixinAccount.lastError),
+          lastInboundAt: readNumber(weixinAccount.lastInboundAt),
+          lastOutboundAt: readNumber(weixinAccount.lastOutboundAt),
+        };
+      }
     } catch (error) {
-      console.debug('[IMGatewayManager] failed to enrich Weixin status from OpenClaw runtime:', error);
+      console.debug('[IMGatewayManager] failed to enrich IM status from OpenClaw runtime:', error);
     }
 
     return status;
@@ -632,7 +599,65 @@ export class IMGatewayManager extends EventEmitter {
   private getWeixinAccountSnapshots(
     runtimeStatus: OpenClawChannelsStatusResult,
   ): OpenClawChannelAccountSnapshot[] {
-    const rawAccounts = runtimeStatus.channelAccounts?.[WEIXIN_OPENCLAW_CHANNEL];
+    return this.getChannelAccountSnapshots(runtimeStatus, WEIXIN_OPENCLAW_CHANNEL);
+  }
+
+  private async appendRuntimeConnectivityChecks(
+    platform: ActivePlatform,
+    checks: IMConnectivityCheck[],
+  ): Promise<void> {
+    if (!this.getOpenClawGatewayClient?.()) {
+      checks.push({
+        code: 'openclaw_gateway_not_running',
+        level: 'fail',
+        message: t('imChannelEnabledNotConnected'),
+        suggestion: t('imChannelEnabledNotConnectedSuggestion'),
+      });
+      return;
+    }
+
+    const status = await this.getStatusWithOpenClawRuntime();
+    let connected = false;
+    let lastError: string | null = null;
+
+    if (platform === 'weixin') {
+      connected = status.weixin.connected;
+      lastError = status.weixin.lastError;
+    } else if (platform === 'feishu') {
+      const instance = status.feishu.instances.find(item => item.connected)
+        ?? status.feishu.instances[0];
+      connected = instance?.connected ?? false;
+      lastError = instance?.error ?? null;
+    } else {
+      const instances = status[platform].instances;
+      const instance = instances.find(item => item.connected) ?? instances[0];
+      connected = instance?.connected ?? false;
+      lastError = instance?.lastError ?? null;
+    }
+
+    checks.push({
+      code: 'gateway_running',
+      level: connected ? 'pass' : 'fail',
+      message: connected ? t('imChannelRunning') : t('imChannelEnabledNotConnected'),
+      suggestion: connected ? undefined : t('imChannelEnabledNotConnectedSuggestion'),
+    });
+    if (lastError) {
+      checks.push({
+        code: 'platform_last_error',
+        level: connected ? 'warn' : 'fail',
+        message: t('imRecentError', { error: lastError }),
+        suggestion: connected
+          ? t('imRecentErrorConnectedSuggestion')
+          : t('imRecentErrorDisconnectedSuggestion'),
+      });
+    }
+  }
+
+  private getChannelAccountSnapshots(
+    runtimeStatus: OpenClawChannelsStatusResult,
+    channel: string,
+  ): OpenClawChannelAccountSnapshot[] {
+    const rawAccounts = runtimeStatus.channelAccounts?.[channel];
     if (!Array.isArray(rawAccounts)) return [];
 
     return rawAccounts
@@ -674,6 +699,9 @@ export class IMGatewayManager extends EventEmitter {
     platform: Platform,
     configOverride?: Partial<IMGatewayConfig>
   ): Promise<IMConnectivityTestResult> {
+    if (!PlatformRegistry.platforms.some(candidate => candidate === platform)) {
+      throw new Error(t('scheduledTaskRetiredMessageChannel'));
+    }
     // Telegram always uses OpenClaw mode
     if (platform === 'telegram') {
       return this.testTelegramOpenClawConnectivity(configOverride);
@@ -901,6 +929,9 @@ export class IMGatewayManager extends EventEmitter {
 
   // ==================== Gateway Control ====================
   async startGateway(platform: Platform): Promise<void> {
+    if (!PlatformRegistry.platforms.some(candidate => candidate === platform)) {
+      throw new Error(t('scheduledTaskRetiredMessageChannel'));
+    }
     // Ensure chat handler is ready
     this.updateChatHandler();
 
@@ -967,11 +998,12 @@ export class IMGatewayManager extends EventEmitter {
       return;
     }
 
-    // Restore persisted notification target
-    this.restoreNotificationTarget(platform);
   }
 
   async stopGateway(platform: Platform): Promise<void> {
+    if (!PlatformRegistry.platforms.some(candidate => candidate === platform)) {
+      throw new Error(t('scheduledTaskRetiredMessageChannel'));
+    }
     if (platform === 'dingtalk') {
       // DingTalk runs via OpenClaw gateway
       console.log('[IMGatewayManager] DingTalk in OpenClaw mode, syncing disabled config');
@@ -1028,7 +1060,7 @@ export class IMGatewayManager extends EventEmitter {
   /**
    * Start all enabled gateways.
    *
-   * OpenClaw platforms (dingtalk/feishu/telegram/discord/qq/wecom/weixin/popo/nim) are batched
+   * Active OpenClaw platforms are batched
    * so that `syncOpenClawConfig` + `ensureOpenClawGatewayConnected` are called
    * only **once** regardless of how many OpenClaw platforms are enabled.
    * This avoids N serial gateway restarts which cause message loss, Telegram
@@ -1052,14 +1084,6 @@ export class IMGatewayManager extends EventEmitter {
     if (feishuInstances.some(i => i.enabled && i.appId && i.appSecret)) {
       openClawPlatformsToStart.push('feishu');
     }
-    const telegramInstances = config.telegram?.instances || [];
-    if (telegramInstances.some(i => i.enabled && i.botToken)) {
-      openClawPlatformsToStart.push('telegram');
-    }
-    const discordInstances = config.discord?.instances || [];
-    if (discordInstances.some(i => i.enabled && i.botToken)) {
-      openClawPlatformsToStart.push('discord');
-    }
     const qqInstances = config.qq?.instances || [];
     if (qqInstances.some(i => i.enabled && i.appId && i.appSecret)) {
       openClawPlatformsToStart.push('qq');
@@ -1070,17 +1094,6 @@ export class IMGatewayManager extends EventEmitter {
     }
     if (config.weixin?.enabled) {
       openClawPlatformsToStart.push('weixin');
-    }
-    const popoInstances = config.popo?.instances || [];
-    if (popoInstances.some(i => i.enabled && i.appKey && i.appSecret && i.aesKey && (i.connectionMode === 'websocket' || i.token))) {
-      openClawPlatformsToStart.push('popo');
-    }
-    const nimInstances = config.nim?.instances || [];
-    if (nimInstances.some(i => i.enabled && ((i.nimToken && i.nimToken.trim()) || (i.appKey && i.account && i.token)))) {
-      openClawPlatformsToStart.push('nim');
-    }
-    if (config['netease-bee']?.enabled && config['netease-bee']?.clientId && config['netease-bee']?.secret) {
-      openClawPlatformsToStart.push('netease-bee');
     }
 
     if (openClawPlatformsToStart.length > 0) {
@@ -1438,12 +1451,8 @@ export class IMGatewayManager extends EventEmitter {
       return { platform, testedAt, verdict: 'fail', checks };
     }
 
-    // Check 3: OpenClaw Gateway running info
-    checks.push({
-      code: 'gateway_running',
-      level: 'info',
-      message: t('imFeishuOpenClawHint'),
-    });
+    // Check 3: actual OpenClaw channel state
+    await this.appendRuntimeConnectivityChecks('feishu', checks);
 
     // Check 4: Group mention hint
     checks.push({
@@ -1521,12 +1530,8 @@ export class IMGatewayManager extends EventEmitter {
       return { platform, testedAt, verdict: 'fail', checks };
     }
 
-    // Check 3: OpenClaw Gateway running info
-    checks.push({
-      code: 'gateway_running',
-      level: 'info',
-      message: t('imDingtalkOpenClawHint'),
-    });
+    // Check 3: actual OpenClaw channel state
+    await this.appendRuntimeConnectivityChecks('dingtalk', checks);
 
     // Check 4: Bot membership hint
     checks.push({
@@ -1577,12 +1582,8 @@ export class IMGatewayManager extends EventEmitter {
       message: t('imWecomConfigReady', { botId: wcConfig.botId }),
     });
 
-    // Check 3: OpenClaw Gateway running info
-    checks.push({
-      code: 'gateway_running',
-      level: 'info',
-      message: t('imWecomOpenClawHint'),
-    });
+    // Check 3: actual OpenClaw channel state
+    await this.appendRuntimeConnectivityChecks('wecom', checks);
 
     const verdict: IMConnectivityVerdict = checks.some(c => c.level === 'fail')
       ? 'fail'
@@ -1621,12 +1622,8 @@ export class IMGatewayManager extends EventEmitter {
       message: t('imWeixinConfigReady'),
     });
 
-    // OpenClaw Gateway running info
-    checks.push({
-      code: 'gateway_running',
-      level: 'info',
-      message: t('imWeixinOpenClawHint'),
-    });
+    // Actual OpenClaw channel state
+    await this.appendRuntimeConnectivityChecks('weixin', checks);
 
     const verdict: IMConnectivityVerdict = checks.some(c => c.level === 'fail')
       ? 'fail'
@@ -1664,7 +1661,38 @@ export class IMGatewayManager extends EventEmitter {
       return result;
     } catch (err) {
       console.error('[IMGatewayManager] Weixin QR login start failed:', err);
-      return { message: `Failed to start Weixin login: ${String(err)}` };
+      if (isWeixinLoginProviderUnavailable(err) && this.prepareWeixinLoginProvider) {
+        try {
+          console.log('[IMGatewayManager] Activating Weixin login provider and retrying QR login...');
+          await this.prepareWeixinLoginProvider();
+          await this.ensureOpenClawGatewayReady?.();
+          const retryClient = this.getOpenClawGatewayClient?.();
+          if (!retryClient) {
+            throw new Error('OpenClaw Gateway did not reconnect after activating Weixin login.');
+          }
+          const result = await retryClient.request<WeixinQrLoginStartResult>(
+            'web.login.start',
+            { force: true, timeoutMs: 300000, verbose: true },
+          );
+          console.log('[IMGatewayManager] Weixin QR login recovered after provider activation.');
+          return result;
+        } catch (recoveryError) {
+          console.error('[IMGatewayManager] Weixin login provider activation failed:', recoveryError);
+          await this.releaseWeixinLoginProvider?.(false).catch(releaseError => {
+            console.error('[IMGatewayManager] Failed to release Weixin login provider:', releaseError);
+          });
+          return {
+            message: isWeixinLoginProviderUnavailable(recoveryError)
+              ? t('imWeixinLoginProviderUnavailable')
+              : `Failed to activate Weixin login: ${String(recoveryError)}`,
+          };
+        }
+      }
+      return {
+        message: isWeixinLoginProviderUnavailable(err)
+          ? t('imWeixinLoginProviderUnavailable')
+          : `Failed to start Weixin login: ${String(err)}`,
+      };
     }
   }
 
@@ -1707,13 +1735,18 @@ export class IMGatewayManager extends EventEmitter {
         // account locally, then let the global Save action apply IM config to
         // OpenClaw and restart the gateway once if the fingerprint changed.
       }
-      return {
+      const finalResult = {
         ...result,
         alreadyConnected,
         accountId: resolvedAccountId,
       };
+      await this.releaseWeixinLoginProvider?.(result.connected || alreadyConnected);
+      return finalResult;
     } catch (err) {
       console.error('[IMGatewayManager] Weixin QR login wait failed:', err);
+      await this.releaseWeixinLoginProvider?.(false).catch(releaseError => {
+        console.error('[IMGatewayManager] Failed to release Weixin login provider:', releaseError);
+      });
       return { connected: false, message: `Login failed: ${String(err)}` };
     }
   }
@@ -1739,7 +1772,7 @@ export class IMGatewayManager extends EventEmitter {
     const taskToken = randomUUID();
     const timeout = Date.now() + IMGatewayManager.POPO_POLLING_TIMEOUT_MS;
     const qrUrl = `${IMGatewayManager.POPO_QRCODE_BASE_URL}${taskToken}&timeout=${timeout}`;
-    console.log('[IMGatewayManager] POPO QR login started, taskToken:', taskToken);
+    console.log('[IMGatewayManager] POPO QR login started');
     return { qrUrl, taskToken, timeoutMs: IMGatewayManager.POPO_POLLING_TIMEOUT_MS };
   }
 
@@ -1972,12 +2005,8 @@ export class IMGatewayManager extends EventEmitter {
       return { platform, testedAt, verdict: 'fail', checks };
     }
 
-    // Check 3: OpenClaw Gateway running info
-    checks.push({
-      code: 'gateway_running',
-      level: 'info',
-      message: t('imQqOpenClawHint'),
-    });
+    // Check 3: actual OpenClaw channel state
+    await this.appendRuntimeConnectivityChecks('qq', checks);
 
     // Check 4: Mention hint
     checks.push({
@@ -3036,50 +3065,12 @@ export class IMGatewayManager extends EventEmitter {
         return { platform, testedAt, verdict: 'fail', checks };
       }
     } else if (inst.transport === 'ws') {
-      // WS mode: validate API Key by exchanging for IM token
-      if (!inst.apiKey) {
-        checks.push({
-          code: 'missing_credentials',
-          level: 'fail',
-          message: t('imMissingCredentials', { fields: 'API Key' }),
-        });
-        return { platform, testedAt, verdict: 'fail', checks };
-      }
-
-      try {
-        const result = await this.withTimeout(
-          fetchJsonWithTimeout<{ success?: boolean; message?: string; code?: number }>(
-            'https://claw.163.com/claw-api-gateway/open/v1/mail/auth/im-token',
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${inst.apiKey}`,
-              },
-              body: JSON.stringify({ uid: inst.email }),
-            },
-            CONNECTIVITY_TIMEOUT_MS,
-          ),
-          CONNECTIVITY_TIMEOUT_MS,
-          t('imAuthProbeTimeout'),
-        );
-        if (!result.success) {
-          throw new Error(result.message || `API returned code ${result.code}`);
-        }
-        checks.push({
-          code: 'auth_check',
-          level: 'pass',
-          message: t('imEmailWsAuthPassed'),
-        });
-      } catch (error: any) {
-        checks.push({
-          code: 'auth_check',
-          level: 'fail',
-          message: `${t('imAuthFailed', { error: error.message })}`,
-          suggestion: t('imAuthFailedSuggestion'),
-        });
-        return { platform, testedAt, verdict: 'fail', checks };
-      }
+      checks.push({
+        code: 'unsupported_transport',
+        level: 'fail',
+        message: t('imEmailWsDisabled'),
+      });
+      return { platform, testedAt, verdict: 'fail', checks };
     }
 
     // Gateway running status

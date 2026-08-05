@@ -33,11 +33,7 @@ const LABEL = '[install-openclaw-channel-deps]';
 // Packages that dist/ chunks import via bare specifiers but are only shipped
 // inside individual extension node_modules.
 const CHANNEL_DEPS = [
-  '@buape/carbon',                  // discord
   '@larksuiteoapi/node-sdk',        // feishu / lark
-  'grammy',                         // telegram
-  '@grammyjs/runner',               // telegram
-  '@grammyjs/transformer-throttler', // telegram
 ];
 
 function main() {

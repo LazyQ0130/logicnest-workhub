@@ -23,6 +23,7 @@ import {
   type Platform,
   PlatformRegistry,
 } from '../../../shared/platform';
+import { t } from '../../i18n';
 import {
   dedupeConversationMappings,
   filterConversationMappingsForSelectedAccount,
@@ -54,6 +55,13 @@ type AnnounceNormalizationContext = {
   rawTo: string;
   parsedConversation: ParsedImConversationId;
 };
+
+function assertActiveScheduledTaskDelivery(delivery?: ScheduledTaskDelivery): void {
+  const channel = delivery?.channel;
+  if (channel && PlatformRegistry.isRetiredIMChannel(channel)) {
+    throw new Error(t('scheduledTaskRetiredMessageChannel'));
+  }
+}
 
 function normalizeImAnnounceDeliveryTo(
   rawTo: string,
@@ -512,6 +520,13 @@ export async function migrateScheduledTaskAnnounceJobs(
   const tasks = await deps.getCronJobService().listJobs();
   let updated = 0;
   for (const task of tasks) {
+    if (PlatformRegistry.isRetiredIMChannel(task.delivery?.channel || '')) {
+      if (task.enabled) {
+        await deps.getCronJobService().toggleJob(task.id, false);
+        updated += 1;
+      }
+      continue;
+    }
     if (await migrateScheduledTaskAnnounceJob(task, deps)) {
       updated += 1;
     }
@@ -574,6 +589,7 @@ export function registerScheduledTaskHandlers(deps: ScheduledTaskHandlerDeps): v
   ipcMain.handle(ScheduledTaskIpc.Create, async (_event, input: any) => {
     try {
       const normalizedInput = input && typeof input === 'object' ? { ...input } : {};
+      assertActiveScheduledTaskDelivery(normalizedInput.delivery);
       console.debug('[ScheduledTask] create input:', JSON.stringify(normalizedInput, null, 2));
       await applyAnnounceDeliveryNormalization(normalizedInput, {
         getIMGatewayManager,
@@ -594,6 +610,7 @@ export function registerScheduledTaskHandlers(deps: ScheduledTaskHandlerDeps): v
   ipcMain.handle(ScheduledTaskIpc.Update, async (_event, id: string, input: any) => {
     try {
       const normalizedInput = input && typeof input === 'object' ? { ...input } : {};
+      assertActiveScheduledTaskDelivery(normalizedInput.delivery);
       console.debug(
         '[ScheduledTask] update input id:',
         id,
@@ -629,6 +646,10 @@ export function registerScheduledTaskHandlers(deps: ScheduledTaskHandlerDeps): v
 
   ipcMain.handle(ScheduledTaskIpc.Toggle, async (_event, id: string, enabled: boolean) => {
     try {
+      if (enabled) {
+        const existing = await getCronJobService().getJob(id);
+        assertActiveScheduledTaskDelivery(existing?.delivery);
+      }
       const task = await getCronJobService().toggleJob(id, enabled);
       return { success: true, task };
     } catch (error) {
@@ -644,6 +665,7 @@ export function registerScheduledTaskHandlers(deps: ScheduledTaskHandlerDeps): v
       const cronJobService = getCronJobService();
       const task = await cronJobService.getJob(id);
       if (task) {
+        assertActiveScheduledTaskDelivery(task.delivery);
         await migrateScheduledTaskAnnounceJob(task, {
           getCronJobService,
           getIMGatewayManager,

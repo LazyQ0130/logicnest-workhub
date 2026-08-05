@@ -64,6 +64,7 @@ export class SqliteStore {
   }
 
   private initializeTables(basePath: string) {
+    this.db.pragma('foreign_keys = ON');
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS kv (
         key TEXT PRIMARY KEY,
@@ -93,6 +94,7 @@ export class SqliteStore {
         fork_git_branch TEXT,
         fork_git_base_ref TEXT,
         goal_json TEXT,
+        scope TEXT NOT NULL DEFAULT 'user',
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       );
@@ -134,6 +136,119 @@ export class SqliteStore {
         value TEXT NOT NULL,
         updated_at INTEGER NOT NULL
       );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS meeting_rooms (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        topic TEXT NOT NULL,
+        mode TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft',
+        total_rounds INTEGER NOT NULL,
+        current_round INTEGER NOT NULL DEFAULT 0,
+        host_session_id TEXT,
+        host_model_snapshot TEXT NOT NULL DEFAULT '',
+        host_supports_vision INTEGER NOT NULL DEFAULT 0,
+        final_summary TEXT NOT NULL DEFAULT '',
+        current_step TEXT,
+        current_turn_id TEXT,
+        current_attempt_id TEXT,
+        run_epoch INTEGER NOT NULL DEFAULT 0,
+        pause_reason TEXT,
+        version INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        started_at INTEGER,
+        completed_at INTEGER
+      );
+
+      CREATE TABLE IF NOT EXISTS meeting_participants (
+        id TEXT PRIMARY KEY,
+        meeting_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        speaking_order INTEGER NOT NULL,
+        role_note TEXT NOT NULL DEFAULT '',
+        name_snapshot TEXT NOT NULL,
+        avatar_snapshot TEXT NOT NULL DEFAULT '',
+        model_snapshot TEXT NOT NULL DEFAULT '',
+        supports_vision_snapshot INTEGER NOT NULL DEFAULT 0,
+        identity_snapshot TEXT NOT NULL DEFAULT '',
+        system_prompt_snapshot TEXT NOT NULL DEFAULT '',
+        hidden_session_id TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        UNIQUE(meeting_id, agent_id),
+        UNIQUE(meeting_id, speaking_order),
+        FOREIGN KEY (meeting_id) REFERENCES meeting_rooms(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS meeting_turns (
+        id TEXT PRIMARY KEY,
+        meeting_id TEXT NOT NULL,
+        round_number INTEGER NOT NULL,
+        turn_order INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        actor_participant_id TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        final_content TEXT NOT NULL DEFAULT '',
+        error TEXT,
+        input_tokens INTEGER,
+        output_tokens INTEGER,
+        started_at INTEGER,
+        completed_at INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        UNIQUE(meeting_id, round_number, turn_order, kind, actor_participant_id),
+        FOREIGN KEY (meeting_id) REFERENCES meeting_rooms(id) ON DELETE CASCADE,
+        FOREIGN KEY (actor_participant_id) REFERENCES meeting_participants(id) ON DELETE SET NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS meeting_turn_attempts (
+        id TEXT PRIMARY KEY,
+        turn_id TEXT NOT NULL,
+        attempt_number INTEGER NOT NULL,
+        openclaw_run_id TEXT,
+        run_epoch INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'running',
+        streaming_content TEXT NOT NULL DEFAULT '',
+        error TEXT,
+        tool_violation INTEGER NOT NULL DEFAULT 0,
+        tool_name TEXT,
+        timeout INTEGER NOT NULL DEFAULT 0,
+        user_aborted INTEGER NOT NULL DEFAULT 0,
+        input_tokens INTEGER,
+        output_tokens INTEGER,
+        started_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        UNIQUE(turn_id, attempt_number),
+        FOREIGN KEY (turn_id) REFERENCES meeting_turns(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS meeting_attachments (
+        id TEXT PRIMARY KEY,
+        meeting_id TEXT NOT NULL,
+        original_name TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        managed_path TEXT NOT NULL UNIQUE,
+        size_bytes INTEGER NOT NULL,
+        attachment_order INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (meeting_id) REFERENCES meeting_rooms(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_meeting_rooms_status_updated
+      ON meeting_rooms(status, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_meeting_participants_meeting_order
+      ON meeting_participants(meeting_id, speaking_order);
+      CREATE INDEX IF NOT EXISTS idx_meeting_turns_meeting_order
+      ON meeting_turns(meeting_id, round_number, turn_order);
+      CREATE INDEX IF NOT EXISTS idx_meeting_attempts_turn_number
+      ON meeting_turn_attempts(turn_id, attempt_number);
+      CREATE INDEX IF NOT EXISTS idx_meeting_attachments_meeting_order
+      ON meeting_attachments(meeting_id, attachment_order);
     `);
 
     this.db.exec(`
@@ -396,6 +511,11 @@ export class SqliteStore {
 
       if (!colNames.includes('goal_json')) {
         this.db.exec('ALTER TABLE cowork_sessions ADD COLUMN goal_json TEXT;');
+        this.didRunMigration = true;
+      }
+
+      if (!colNames.includes('scope')) {
+        this.db.exec("ALTER TABLE cowork_sessions ADD COLUMN scope TEXT NOT NULL DEFAULT 'user';");
         this.didRunMigration = true;
       }
 

@@ -10,6 +10,7 @@ import {
 import { i18nService } from '../../services/i18n';
 import Modal from '../common/Modal';
 import ThemedSelect from '../ui/ThemedSelect';
+import { SettingsField, SettingsSection, SettingsStatus } from './SettingsCenterLayout';
 
 interface BrowserWebAccessSettingsProps {
   value: BrowserWebAccessConfig;
@@ -22,24 +23,6 @@ const HostnameListTarget = {
 
 type HostnameListTarget = typeof HostnameListTarget[keyof typeof HostnameListTarget];
 
-const SettingRow: React.FC<{
-  title: string;
-  description?: React.ReactNode;
-  control?: React.ReactNode;
-  children?: React.ReactNode;
-}> = ({ title, description, control, children }) => (
-  <div>
-    <div className="flex items-start justify-between gap-4">
-      <div className="min-w-0 flex-1">
-        <h4 className="text-sm font-medium text-foreground">{title}</h4>
-        {description ? <div className="mt-1 text-sm text-secondary">{description}</div> : null}
-        {children ? <div className="mt-3">{children}</div> : null}
-      </div>
-      {control ? <div className="shrink-0">{control}</div> : null}
-    </div>
-  </div>
-);
-
 const HostnameList: React.FC<{
   title: string;
   description: string;
@@ -47,7 +30,7 @@ const HostnameList: React.FC<{
   onAdd: () => void;
   onRemove: (hostname: string) => void;
 }> = ({ title, description, hostnames, onAdd, onRemove }) => (
-  <section className="space-y-2">
+  <div className="space-y-3">
     <div className="flex items-start justify-between gap-4">
       <div className="min-w-0">
         <h4 className="text-sm font-medium text-foreground">{title}</h4>
@@ -63,7 +46,7 @@ const HostnameList: React.FC<{
       </button>
     </div>
 
-    <div className="overflow-hidden rounded-lg border border-border bg-background">
+    <div className="border-y border-border bg-background">
       {hostnames.length > 0 ? (
         hostnames.map((hostname, index) => (
           <div
@@ -89,7 +72,7 @@ const HostnameList: React.FC<{
         </div>
       )}
     </div>
-  </section>
+  </div>
 );
 
 const BrowserWebAccessSettings: React.FC<BrowserWebAccessSettingsProps> = ({
@@ -153,38 +136,59 @@ const BrowserWebAccessSettings: React.FC<BrowserWebAccessSettingsProps> = ({
   const hostnameDialogTitle = i18nService.t('browserAddBlockedHostnameTitle');
   const hostnameDialogDescription = i18nService.t('browserAddBlockedHostnameDescription');
 
-  const networkModeDescription = value.networkMode === BrowserNetworkMode.Strict
-    ? i18nService.t('browserNetworkStrictDescription')
-    : i18nService.t('browserNetworkOpenDescription');
+  const networkModeDescription = value.networkMode === BrowserNetworkMode.PrivateNetworkAccess
+    ? i18nService.t('browserNetworkOpenDescription')
+    : i18nService.t('browserNetworkStrictDescription');
 
   return (
     <>
-      <div className="space-y-8">
-        <SettingRow
+      <div>
+        <SettingsSection
           title={i18nService.t('browserNetworkSectionTitle')}
-          description={networkModeDescription}
-          control={(
-            <div className="w-[300px]">
+          description={i18nService.t('settingsTabBrowserDescription')}
+        >
+          <SettingsField>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0 flex-1">
+                <h4 className="text-sm font-medium text-foreground">
+                  {value.networkMode === BrowserNetworkMode.Strict
+                    ? i18nService.t('browserNetworkStrict')
+                    : i18nService.t('browserNetworkOpen')}
+                </h4>
+                <p className="mt-1 text-sm leading-6 text-secondary">{networkModeDescription}</p>
+              </div>
+              <div className="w-full shrink-0 sm:w-[300px]">
               <ThemedSelect
                 id="browser-network-mode"
                 value={value.networkMode}
                 onChange={(mode) => update({ networkMode: mode as BrowserNetworkMode })}
                 options={[
-                  { value: BrowserNetworkMode.ProxyCompatible, label: i18nService.t('browserNetworkOpen') },
                   { value: BrowserNetworkMode.Strict, label: i18nService.t('browserNetworkStrict') },
+                  { value: BrowserNetworkMode.PrivateNetworkAccess, label: i18nService.t('browserNetworkOpen') },
                 ]}
               />
+              </div>
             </div>
+          </SettingsField>
+          {value.networkMode === BrowserNetworkMode.PrivateNetworkAccess && (
+            <SettingsField>
+              <SettingsStatus tone="warning">{i18nService.t('browserNetworkOpenDescription')}</SettingsStatus>
+            </SettingsField>
           )}
-        />
+        </SettingsSection>
 
-        <HostnameList
+        <SettingsSection
           title={i18nService.t('browserBlockedHostnames')}
           description={i18nService.t('browserBlockedHostnamesDescription')}
-          hostnames={value.blockedHostnames}
-          onAdd={() => openHostnameDialog(HostnameListTarget.BlockedHostnames)}
-          onRemove={removeHostname}
-        />
+        >
+          <HostnameList
+            title={i18nService.t('browserBlockedHostnames')}
+            description={i18nService.t('browserBlockedHostnamesDescription')}
+            hostnames={value.blockedHostnames}
+            onAdd={() => openHostnameDialog(HostnameListTarget.BlockedHostnames)}
+            onRemove={removeHostname}
+          />
+        </SettingsSection>
 
       </div>
 

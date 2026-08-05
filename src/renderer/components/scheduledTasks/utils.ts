@@ -360,6 +360,9 @@ export function formatPayloadLabel(payload: ScheduledTaskPayload): string {
  * e.g. 'feishu' → '飞书', 'openclaw-weixin' → '微信', 'moltbot-popo' → 'POPO'
  */
 function resolveChannelDisplayName(channel: string): string {
+  if (PlatformRegistry.isRetiredIMChannel(channel)) {
+    return `${channel} · ${i18nService.t('scheduledTasksRetiredChannel')}`;
+  }
   const platform = PlatformRegistry.platformOfChannel(channel);
   if (platform) {
     return i18nService.t(platform) || PlatformRegistry.get(platform).label;
@@ -421,7 +424,7 @@ export function pickDefaultConversation(
  * or trailing segment.
  */
 export function conversationOptionMatchesValue(
-  channel: string,
+  _channel: string,
   optionConversationId: string,
   selectedValue: string,
 ): boolean {
@@ -434,9 +437,6 @@ export function conversationOptionMatchesValue(
   if (optionId === value) return true;
   if (parseImConversationId(optionId).peerId === value) return true;
   if (optionId.endsWith(`:${value}`)) return true;
-
-  const platform = PlatformRegistry.platformOfChannel(channel);
-  if (platform === 'nim' && optionId.endsWith(`|${value}`)) return true;
 
   return false;
 }

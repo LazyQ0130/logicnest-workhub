@@ -30,6 +30,8 @@ type OpenClawCatalogIndex = {
   modelAliasesByProvider: Map<string, Map<string, string>>;
 };
 
+type OpenClawCatalogBuilder = (env?: Record<string, string>) => unknown;
+
 const runtimeRequire = createRequire(__filename);
 let cachedCatalogIndex: OpenClawCatalogIndex | null | undefined;
 
@@ -43,6 +45,43 @@ const compactLookupPart = (value: string): string =>
 
 const catalogKey = (providerId: string, modelId: string): string =>
   `${normalizeLookupPart(providerId)}/${normalizeLookupPart(modelId)}`;
+
+export const normalizeOpenClawCatalogBuilderEnv = (
+  env: Record<string, unknown>,
+): Record<string, string> => Object.fromEntries(
+  Object.entries(env)
+    .filter((entry): entry is [string, Exclude<unknown, null | undefined>] => entry[1] != null)
+    .map(([key, value]) => [key, typeof value === 'string' ? value : String(value)]),
+);
+
+export const invokeSynchronousOpenClawCatalogBuilder = (
+  builder: OpenClawCatalogBuilder,
+  env: Record<string, unknown>,
+): OpenClawCatalogProvider | undefined => {
+  // Discovery builders are async and may perform network requests. Calling
+  // them from this synchronous indexer also leaves rejected promises
+  // unhandled when an upstream parameter contract changes.
+  if (builder.constructor.name === 'AsyncFunction') return undefined;
+
+  const normalizedEnv = normalizeOpenClawCatalogBuilderEnv(env);
+  for (const argument of [undefined, normalizedEnv]) {
+    try {
+      const result = builder(argument);
+      if (result && typeof result === 'object') {
+        if ('then' in result) {
+          void Promise.resolve(result as PromiseLike<unknown>)
+            .catch((_error: unknown): undefined => undefined);
+          return undefined;
+        }
+        return result as OpenClawCatalogProvider;
+      }
+    } catch {
+      // Some static builders require the environment object while others take
+      // no argument. Try the compatible signature before ignoring the builder.
+    }
+  }
+  return undefined;
+};
 
 // The bundled OpenClaw catalog may be unavailable in CI or in a trimmed
 // runtime, but LobsterAI still needs to write correct limits for known native
@@ -250,12 +289,11 @@ const indexProviderCatalogBuilders = (
     const matchedProviderIds = selectProviderIdsForBuilder(exportName, providerIds);
     if (matchedProviderIds.length === 0) continue;
 
-    let providerConfig: OpenClawCatalogProvider | undefined;
-    try {
-      providerConfig = exported(process.env) as OpenClawCatalogProvider;
-    } catch {
-      continue;
-    }
+    const providerConfig = invokeSynchronousOpenClawCatalogBuilder(
+      exported as OpenClawCatalogBuilder,
+      process.env,
+    );
+    if (!providerConfig) continue;
     for (const providerId of matchedProviderIds) {
       indexProviderModels(index, providerId, providerConfig);
     }

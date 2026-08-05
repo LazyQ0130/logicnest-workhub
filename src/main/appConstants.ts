@@ -1,5 +1,12 @@
-export const APP_NAME = 'LobsterAI';
-export const APP_ID = 'lobsterai';
-export const APP_USER_MODEL_ID = 'com.lobsterai.app';
+export {
+  APP_ID,
+  APP_NAME,
+  APP_PROTOCOL_PREFIX,
+  APP_SCHEME,
+  APP_USER_MODEL_ID,
+  BRAND,
+  DB_FILENAME,
+  DEFAULT_PROJECT_DIRECTORY,
+} from '../shared/brand';
+
 export const APP_ATTENTION_BADGE_COLOR = '#FF3B30';
-export const DB_FILENAME = 'lobsterai.sqlite';

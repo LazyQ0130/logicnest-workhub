@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 import { IpcChannel as ScheduledTaskIpc } from '../scheduledTask/constants';
 import { AgentIpcChannel, AgentLegacyIdentityCleanupStatus } from '../shared/agent/constants';
-import { AppIpcChannel } from '../shared/app/constants';
+import { type AppDocumentation,AppIpcChannel } from '../shared/app/constants';
 import { AppSettingsIpc } from '../shared/appSettings/constants';
 import { AppUpdateIpc } from '../shared/appUpdate/constants';
 import { ArtifactPreviewIpc } from '../shared/artifactPreview/constants';
@@ -44,11 +44,27 @@ import type {
   ResolvedKitCapabilities,
 } from '../shared/kit/constants';
 import {
+  type LicenseActionResponse,
+  type LicenseCredentials,
+  LicenseIpcChannel,
+  type LicenseRegistration,
+  type LicenseState,
+} from '../shared/license';
+import {
   type ListLocalWebServicesOptions,
   type LocalWebService,
   LocalWebServicesIpc,
 } from '../shared/localWebServices/constants';
 import { McpIpcChannel } from '../shared/mcp/constants';
+import {
+  type MeetingRoomAppendRoundInput,
+  type MeetingRoomChangedEvent,
+  type MeetingRoomCreateInput,
+  type MeetingRoomIdInput,
+  MeetingRoomIpcChannel,
+  type MeetingRoomStartInput,
+  type MeetingRoomTurnUpdateEvent,
+} from '../shared/meetingRoom';
 import { OpenClawEngineIpc } from '../shared/openclawEngine/constants';
 import { PermissionIpcChannel } from '../shared/permissions/constants';
 import type { Platform } from '../shared/platform';
@@ -81,7 +97,6 @@ import type {
   SkinGetActiveResponse,
   SkinListResponse,
 } from '../shared/skin/types';
-import { NimQrLoginIpc } from './ipcHandlers/nimQrLogin';
 import { OpenClawSessionIpc } from './openclawSession/constants';
 import { OpenClawSessionPolicyIpc } from './openclawSessionPolicy/constants';
 
@@ -93,6 +108,23 @@ contextBridge.exposeInMainWorld('electron', {
     get: (key: string) => ipcRenderer.invoke('store:get', key),
     set: (key: string, value: any) => ipcRenderer.invoke('store:set', key, value),
     remove: (key: string) => ipcRenderer.invoke('store:remove', key),
+  },
+  license: {
+    getState: (): Promise<LicenseState> => ipcRenderer.invoke(LicenseIpcChannel.GetState),
+    register: (input: LicenseRegistration): Promise<LicenseActionResponse> =>
+      ipcRenderer.invoke(LicenseIpcChannel.Register, input),
+    login: (input: LicenseCredentials): Promise<LicenseActionResponse> =>
+      ipcRenderer.invoke(LicenseIpcChannel.Login, input),
+    redeem: (code: string): Promise<LicenseActionResponse> =>
+      ipcRenderer.invoke(LicenseIpcChannel.Redeem, code),
+    logout: (): Promise<LicenseState> => ipcRenderer.invoke(LicenseIpcChannel.Logout),
+    refresh: (): Promise<LicenseActionResponse> => ipcRenderer.invoke(LicenseIpcChannel.Refresh),
+    heartbeat: (): Promise<LicenseState> => ipcRenderer.invoke(LicenseIpcChannel.Heartbeat),
+    onStateChanged: (callback: (state: LicenseState) => void): (() => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, state: LicenseState) => callback(state);
+      ipcRenderer.on(LicenseIpcChannel.StateChanged, handler);
+      return () => ipcRenderer.removeListener(LicenseIpcChannel.StateChanged, handler);
+    },
   },
   skills: {
     list: () => ipcRenderer.invoke('skills:list'),
@@ -392,6 +424,33 @@ contextBridge.exposeInMainWorld('electron', {
     addPreset: async (presetId: string) => {
       const result = await ipcRenderer.invoke(AgentIpcChannel.AddPreset, presetId);
       return result?.success ? result.agent : null;
+    },
+  },
+  meetingRoom: {
+    list: () => ipcRenderer.invoke(MeetingRoomIpcChannel.List),
+    get: (input: MeetingRoomIdInput) => ipcRenderer.invoke(MeetingRoomIpcChannel.Get, input),
+    create: (input: MeetingRoomCreateInput) => ipcRenderer.invoke(MeetingRoomIpcChannel.Create, input),
+    delete: (input: MeetingRoomIdInput) => ipcRenderer.invoke(MeetingRoomIpcChannel.Delete, input),
+    start: (input: MeetingRoomStartInput) => ipcRenderer.invoke(MeetingRoomIpcChannel.Start, input),
+    pause: (input: MeetingRoomIdInput) => ipcRenderer.invoke(MeetingRoomIpcChannel.Pause, input),
+    resume: (input: MeetingRoomIdInput) => ipcRenderer.invoke(MeetingRoomIpcChannel.Resume, input),
+    stop: (input: MeetingRoomIdInput) => ipcRenderer.invoke(MeetingRoomIpcChannel.Stop, input),
+    appendRound: (input: MeetingRoomAppendRoundInput) =>
+      ipcRenderer.invoke(MeetingRoomIpcChannel.AppendRound, input),
+    retryHost: (input: MeetingRoomIdInput) => ipcRenderer.invoke(MeetingRoomIpcChannel.RetryHost, input),
+    exportMarkdown: (input: MeetingRoomIdInput) =>
+      ipcRenderer.invoke(MeetingRoomIpcChannel.ExportMarkdown, input),
+    exportHtml: (input: MeetingRoomIdInput) =>
+      ipcRenderer.invoke(MeetingRoomIpcChannel.ExportHtml, input),
+    onChanged: (callback: (event: MeetingRoomChangedEvent) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: MeetingRoomChangedEvent) => callback(payload);
+      ipcRenderer.on(MeetingRoomIpcChannel.Changed, handler);
+      return () => ipcRenderer.removeListener(MeetingRoomIpcChannel.Changed, handler);
+    },
+    onTurnUpdate: (callback: (event: MeetingRoomTurnUpdateEvent) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: MeetingRoomTurnUpdateEvent) => callback(payload);
+      ipcRenderer.on(MeetingRoomIpcChannel.TurnUpdate, handler);
+      return () => ipcRenderer.removeListener(MeetingRoomIpcChannel.TurnUpdate, handler);
     },
   },
   cowork: {
@@ -878,6 +937,8 @@ contextBridge.exposeInMainWorld('electron', {
     getSystemLocale: () => ipcRenderer.invoke('app:getSystemLocale'),
     getKeyfromAttribution: () => ipcRenderer.invoke(AppIpcChannel.GetKeyfromAttribution),
     relaunch: () => ipcRenderer.invoke('app:relaunch'),
+    openDocumentation: (document: AppDocumentation) =>
+      ipcRenderer.invoke(AppIpcChannel.OpenDocumentation, document),
     openSystemNotificationSettings: () =>
       ipcRenderer.invoke(AppIpcChannel.OpenSystemNotificationSettings),
   },
@@ -957,20 +1018,6 @@ contextBridge.exposeInMainWorld('electron', {
     weixinQrLoginWait: (sessionKey?: string) =>
       ipcRenderer.invoke('im:weixin:qr-login-wait', sessionKey),
 
-    // POPO QR login
-    popoQrLoginStart: () => ipcRenderer.invoke('im:popo:qr-login-start'),
-    popoQrLoginPoll: (taskToken: string) => ipcRenderer.invoke('im:popo:qr-login-poll', taskToken),
-
-    // POPO Multi-Instance
-    addPopoInstance: (name: string) => ipcRenderer.invoke('im:popo:instance:add', name),
-    deletePopoInstance: (instanceId: string) =>
-      ipcRenderer.invoke('im:popo:instance:delete', instanceId),
-    setPopoInstanceConfig: (
-      instanceId: string,
-      config: Record<string, unknown>,
-      options?: { syncGateway?: boolean; restartGatewayIfRunning?: boolean; markRestartOnSave?: boolean },
-    ) => ipcRenderer.invoke('im:popo:instance:config:set', instanceId, config, options),
-
     // Pairing
     listPairingRequests: (platform: string) => ipcRenderer.invoke('im:pairing:list', platform),
     approvePairingCode: (platform: string, code: string) =>
@@ -987,19 +1034,6 @@ contextBridge.exposeInMainWorld('electron', {
       config: any,
       options?: { syncGateway?: boolean; restartGatewayIfRunning?: boolean; markRestartOnSave?: boolean },
     ) => ipcRenderer.invoke('im:dingtalk:instance:config:set', instanceId, config, options),
-
-    // NIM Multi-Instance
-    addNimInstance: (name: string) => ipcRenderer.invoke('im:nim:instance:add', name),
-    deleteNimInstance: (instanceId: string) =>
-      ipcRenderer.invoke('im:nim:instance:delete', instanceId),
-    setNimInstanceConfig: (
-      instanceId: string,
-      config: any,
-      options?: { syncGateway?: boolean; restartGatewayIfRunning?: boolean; markRestartOnSave?: boolean },
-    ) =>
-      ipcRenderer.invoke('im:nim:instance:config:set', instanceId, config, options),
-    nimQrLoginStart: () => ipcRenderer.invoke(NimQrLoginIpc.Start),
-    nimQrLoginPoll: (uuid: string) => ipcRenderer.invoke(NimQrLoginIpc.Poll, uuid),
 
     // QQ Multi-Instance
     addQQInstance: (name: string) => ipcRenderer.invoke('im:qq:instance:add', name),
@@ -1018,16 +1052,6 @@ contextBridge.exposeInMainWorld('electron', {
       options?: { syncGateway?: boolean; restartGatewayIfRunning?: boolean; markRestartOnSave?: boolean },
     ) => ipcRenderer.invoke('im:feishu:instance:config:set', instanceId, config, options),
 
-    // Email Multi-Instance
-    addEmailInstance: (name: string) => ipcRenderer.invoke('im:email:instance:add', name),
-    deleteEmailInstance: (instanceId: string) =>
-      ipcRenderer.invoke('im:email:instance:delete', instanceId),
-    setEmailInstanceConfig: (
-      instanceId: string,
-      config: any,
-      options?: { syncGateway?: boolean; restartGatewayIfRunning?: boolean; markRestartOnSave?: boolean },
-    ) => ipcRenderer.invoke('im:email:instance:config:set', instanceId, config, options),
-
     // WeCom Multi-Instance
     addWecomInstance: (name: string) => ipcRenderer.invoke('im:wecom:instance:add', name),
     deleteWecomInstance: (instanceId: string) =>
@@ -1037,26 +1061,6 @@ contextBridge.exposeInMainWorld('electron', {
       config: any,
       options?: { syncGateway?: boolean; restartGatewayIfRunning?: boolean; markRestartOnSave?: boolean },
     ) => ipcRenderer.invoke('im:wecom:instance:config:set', instanceId, config, options),
-
-    // Telegram Multi-Instance
-    addTelegramInstance: (name: string) => ipcRenderer.invoke('im:telegram:instance:add', name),
-    deleteTelegramInstance: (instanceId: string) =>
-      ipcRenderer.invoke('im:telegram:instance:delete', instanceId),
-    setTelegramInstanceConfig: (
-      instanceId: string,
-      config: any,
-      options?: { syncGateway?: boolean; restartGatewayIfRunning?: boolean; markRestartOnSave?: boolean },
-    ) => ipcRenderer.invoke('im:telegram:instance:config:set', instanceId, config, options),
-
-    // Discord Multi-Instance
-    addDiscordInstance: (name: string) => ipcRenderer.invoke('im:discord:instance:add', name),
-    deleteDiscordInstance: (instanceId: string) =>
-      ipcRenderer.invoke('im:discord:instance:delete', instanceId),
-    setDiscordInstanceConfig: (
-      instanceId: string,
-      config: any,
-      options?: { syncGateway?: boolean; restartGatewayIfRunning?: boolean; markRestartOnSave?: boolean },
-    ) => ipcRenderer.invoke('im:discord:instance:config:set', instanceId, config, options),
 
     // Event listeners
     onStatusChange: (callback: (status: any) => void) => {

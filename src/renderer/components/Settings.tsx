@@ -1,9 +1,11 @@
-import { ArchiveBoxIcon, ArrowPathIcon, ArrowPathRoundedSquareIcon, ChatBubbleLeftIcon, CheckCircleIcon, CpuChipIcon, CubeIcon, EnvelopeIcon, ExclamationTriangleIcon, GlobeAltIcon, InformationCircleIcon, MagnifyingGlassIcon, SignalIcon, SunIcon, TrashIcon, WrenchScrewdriverIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import React, { useCallback,useEffect, useMemo, useRef, useState } from 'react';
+import { ArchiveBoxIcon, ArrowPathIcon, ArrowPathRoundedSquareIcon, CheckCircleIcon, CpuChipIcon, ExclamationTriangleIcon, MagnifyingGlassIcon, SignalIcon, TrashIcon, WrenchScrewdriverIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
+import { AppDocumentation } from '../../shared/app/constants';
 import { AppSettingsAutoLaunchErrorCode } from '../../shared/appSettings/constants';
 import { type AppUpdateInfo,type AppUpdateRuntimeState,AppUpdateSource,AppUpdateStatus } from '../../shared/appUpdate/constants';
+import { BRAND } from '../../shared/brand';
 import {
   type BrowserWebAccessConfig,
   defaultBrowserWebAccessConfig,
@@ -26,7 +28,8 @@ import {
   resolveCodingPlanBaseUrl,
   resolveModelRuntimeProfile,
 } from '../../shared/providers';
-import { type AppConfig, defaultConfig, FontPreferences, getProviderDisplayName, getVisibleProviders, isCustomProvider, normalizeFontPreference, ShortcutAction, type ShortcutConfig } from '../config';
+import { type AppConfig, defaultConfig, FontPreferences, getProviderDisplayName, isCustomProvider, normalizeFontPreference, ShortcutAction, type ShortcutConfig } from '../config';
+import { type SettingsTabId } from '../config/brandUi';
 import { APP_ID, EXPORT_FORMAT_TYPE, EXPORT_PASSWORD } from '../constants/app';
 import { useSkin } from '../providers/SkinProvider';
 import { apiService } from '../services/api';
@@ -43,6 +46,11 @@ import {
   ThemeServiceEvent,
 } from '../services/theme';
 import { applyTypographyPreferences } from '../services/typography';
+import {
+  createDefaultUserPersonalization,
+  userPersonalizationService,
+  type UserPersonalizationV1,
+} from '../services/userPersonalization';
 import type { RootState } from '../store';
 import { selectCoworkConfig } from '../store/selectors/coworkSelectors';
 import { setAvailableModels } from '../store/slices/modelSlice';
@@ -60,13 +68,12 @@ import Modal from './common/Modal';
 import DreamingSettingsSection from './cowork/DreamingSettingsSection';
 import EmbeddingSettingsSection from './cowork/EmbeddingSettingsSection';
 import ErrorMessage from './ErrorMessage';
-import BrainIcon from './icons/BrainIcon';
 import EditIcon from './icons/EditIcon';
 import MessageCopyIcon from './icons/MessageCopyIcon';
-import PlugIcon from './icons/PlugIcon';
 import PlusCircleIcon from './icons/PlusCircleIcon';
 import IMSettings from './im/IMSettings';
 import PluginsSettings, { type PluginPendingChanges, type PluginsSettingsHandle } from './plugins/PluginsSettings';
+import AppearanceSettings from './settings/AppearanceSettings';
 import BrowserWebAccessSettings from './settings/BrowserWebAccessSettings';
 import {
   buildOpenAICompatibleChatCompletionsUrl,
@@ -93,12 +100,44 @@ import {
   shouldUseOpenAIResponsesForProvider,
 } from './settings/modelProviderUtils';
 import ModelSettingsSection, { DeleteProviderConfirmDialog, ModelEditorDialog } from './settings/ModelSettingsSection';
+import PersonalizationSettings from './settings/PersonalizationSettings';
+import {
+  SettingsActionBar,
+  SettingsCenterToolbar,
+  SettingsField,
+  SettingsHome,
+  SettingsMobileActionBar,
+  SettingsModuleHeader,
+  SettingsSection,
+} from './settings/SettingsCenterLayout';
+import {
+  isMacPlatform,
+  SendShortcutSelect,
+  SettingsGroup,
+  SettingsRow,
+  SettingsSwitch,
+  SettingsToggleRow,
+  ShortcutRecorder,
+} from './settings/SettingsControls';
+import {
+  findSettingsModuleByTab,
+  getVisibleSettingsModules,
+  isSettingsTabVisible,
+  searchSettings,
+} from './settings/settingsInformationArchitecture';
+import { requestSettingsNavigation } from './settings/settingsNavigationGuard';
 import EmailSkillConfig from './skills/EmailSkillConfig';
 import SkinPresentationScope from './skin/SkinPresentationScope';
-import SkinSettingsSection from './skin/SkinSettingsSection';
 import ThemedSelect from './ui/ThemedSelect';
 
-type TabType = 'general' | 'appearance' | 'coworkAgentEngine' | 'model' | 'browserWebAccess' | 'coworkMemory' | 'coworkDreaming' | 'shortcuts' | 'im' | 'email' | 'plugins' | 'about';
+type TabType = SettingsTabId;
+
+const SettingsView = {
+  Home: 'home',
+  Detail: 'detail',
+} as const;
+
+type SettingsView = typeof SettingsView[keyof typeof SettingsView];
 
 const waitForNextPaint = (): Promise<void> => new Promise(resolve => {
   window.requestAnimationFrame(() => {
@@ -852,41 +891,6 @@ const getShortcutCommandText = (
     .replace('{tab}', command.tabLabelKey ? i18nService.t(command.tabLabelKey) : '');
 };
 
-const SettingsSlidersIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-  >
-    <path d="M14 17H5" />
-    <path d="M19 7h-9" />
-    <circle cx="17" cy="17" r="3" />
-    <circle cx="7" cy="7" r="3" />
-  </svg>
-);
-
-const DreamingTabIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg
-    width="34"
-    height="34"
-    viewBox="0 0 34 34"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    className={className}
-    aria-hidden="true"
-  >
-    <path
-      d="M27.9219 21.9648L29.014 22.4621L29.8552 20.6145L27.831 20.7683L27.9219 21.9648ZM16.0762 5.03516L17.1683 5.53234L18.0095 3.68449L15.9851 3.83862L16.0762 5.03516ZM27.9219 21.9648L26.8297 21.4676C25.1281 25.205 21.3674 27.8 17 27.8V29V30.2C22.3442 30.2 26.9378 27.0221 29.014 22.4621L27.9219 21.9648ZM17 29V27.8C11.0353 27.8 6.2 22.9647 6.2 17H5H3.8C3.8 24.2902 9.70984 30.2 17 30.2V29ZM5 17H6.2C6.2 11.3157 10.5923 6.65614 16.1673 6.23169L16.0762 5.03516L15.9851 3.83862C9.16855 4.35759 3.8 10.0512 3.8 17H5ZM16.0762 5.03516L14.984 4.53798C14.2262 6.20275 13.8 8.052 13.8 10H15H16.2C16.2 8.40537 16.5483 6.8944 17.1683 5.53234L16.0762 5.03516ZM15 10H13.8C13.8 17.2902 19.7098 23.2 27 23.2V22V20.8C21.0353 20.8 16.2 15.9647 16.2 10H15ZM27 22V23.2C27.3413 23.2 27.679 23.1868 28.0128 23.1614L27.9219 21.9648L27.831 20.7683C27.5562 20.7892 27.2791 20.8 27 20.8V22Z"
-      fill="currentColor"
-    />
-  </svg>
-);
-
 export type SettingsOpenOptions = {
   initialTab?: TabType;
   notice?: string;
@@ -896,6 +900,7 @@ export type SettingsOpenOptions = {
 
 interface SettingsProps extends SettingsOpenOptions {
   onClose: () => void;
+  licenseUserId?: string;
   onStartAiSkin?: (text: string, kitId: string) => void;
   initialTabRequestId?: number;
   onUpdateFound?: (info: AppUpdateInfo) => void;
@@ -954,11 +959,6 @@ interface ProvidersImportPayload {
   };
   providers?: Record<string, ProvidersImportEntry>;
 }
-
-const ABOUT_CONTACT_EMAIL = 'lobsterai.project@rd.netease.com';
-const ABOUT_USER_MANUAL_URL = 'https://lobsterai.youdao.com/#/docs/lobsterai_user_manual';
-const ABOUT_USER_COMMUNITY_URL = 'https://lobsterai.youdao.com/#/about';
-const ABOUT_SERVICE_TERMS_URL = 'https://c.youdao.com/dict/hardware/lobsterai/lobsterai_service.html';
 
 // MiniMax Portal OAuth constants
 const MINIMAX_OAUTH_CLIENT_ID = '78257093-7e40-4613-99e0-527b14b39113';
@@ -1049,15 +1049,6 @@ const getUpdateCheckStatusFromRuntimeStatus = (
   }
 };
 
-// System shortcuts that should not be captured (clipboard, undo, select-all, quit, etc.)
-const isSystemShortcut = (e: KeyboardEvent): boolean => {
-  const key = e.key.toLowerCase();
-  if (e.metaKey && ['c', 'v', 'x', 'z', 'y', 'a', 'q', 'w'].includes(key)) return true;
-  if (e.metaKey && e.shiftKey && key === 'z') return true;
-  if (e.ctrlKey && ['c', 'v', 'x', 'z', 'y', 'a', 'w'].includes(key)) return true;
-  return false;
-};
-
 const isShortcutInputActive = () => {
   const activeElement = document.activeElement;
   if (!(activeElement instanceof HTMLElement)) return false;
@@ -1073,301 +1064,9 @@ const isTextEditingActive = () => {
   return activeElement instanceof HTMLInputElement;
 };
 
-const formatShortcutFromEvent = (e: React.KeyboardEvent): string | null => {
-  // Skip standalone modifier keys
-  if (['Meta', 'Control', 'Alt', 'Shift'].includes(e.key)) return null;
-  // Require at least one non-Shift modifier
-  if (!e.metaKey && !e.ctrlKey && !e.altKey) return null;
-  if (isSystemShortcut(e.nativeEvent)) return null;
-
-  const parts: string[] = [];
-  if (e.metaKey) parts.push('Cmd');
-  if (e.ctrlKey) parts.push('Ctrl');
-  if (e.altKey) parts.push(isMacPlatform ? 'Option' : 'Alt');
-  if (e.shiftKey) parts.push('Shift');
-
-  const keyMap: Record<string, string> = {
-    ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right',
-    ' ': 'Space', Escape: 'Esc', Enter: 'Enter', Backspace: 'Backspace',
-    Delete: 'Delete', Tab: 'Tab',
-  };
-  const key = keyMap[e.key] ?? (e.key.length === 1 ? e.key.toUpperCase() : e.key);
-  parts.push(key);
-  return parts.join('+');
-};
-
-const SEND_SHORTCUT_OPTIONS = [
-  { value: 'Enter', label: 'Enter', labelMac: 'Enter' },
-  { value: 'Shift+Enter', label: 'Shift+Enter', labelMac: 'Shift+Enter' },
-  { value: 'Ctrl+Enter', label: 'Ctrl+Enter', labelMac: 'Cmd+Enter' },
-  { value: 'Alt+Enter', label: 'Alt+Enter', labelMac: 'Option+Enter' },
-] as const;
-
-const isMacPlatform = navigator.platform.includes('Mac');
-
-const ShortcutRecorder: React.FC<{
-  value: string;
-  label: string;
-  onChange: (v: string) => void;
-}> = ({ value, label, onChange }) => {
-  const [recording, setRecording] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const recorderRef = useRef<HTMLButtonElement>(null);
-  const displayValue = formatShortcutForDisplay(value, { isMac: isMacPlatform });
-  const editLabel = i18nService.t('shortcutEditCommand').replace('{command}', label);
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (!recording) return;
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.key === 'Escape') { setRecording(false); return; }
-    if (e.key === 'Delete' || e.key === 'Backspace') { onChange(''); setRecording(false); return; }
-    const shortcut = formatShortcutFromEvent(e);
-    if (shortcut) { onChange(shortcut); setRecording(false); }
-  };
-
-  useEffect(() => {
-    if (!recording) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setRecording(false);
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [recording]);
-
-  useEffect(() => {
-    if (!recording) return;
-    window.setTimeout(() => recorderRef.current?.focus(), 0);
-  }, [recording]);
-
-  if (recording) {
-    return (
-      <div ref={containerRef} className="flex items-center gap-3">
-        <button
-          ref={recorderRef}
-          type="button"
-          data-shortcut-input="true"
-          onKeyDown={handleKeyDown}
-          className="h-8 min-w-[8rem] rounded-xl border border-border bg-surface px-4 text-xs font-medium text-foreground shadow-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/25"
-        >
-          {i18nService.t('shortcutPressShortcut')}
-        </button>
-        <button
-          type="button"
-          data-shortcut-input="true"
-          onClick={() => setRecording(false)}
-          className="text-xs font-medium text-secondary transition-colors hover:text-foreground"
-        >
-          {i18nService.t('cancel')}
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-2">
-      <span
-        title={displayValue || i18nService.t('shortcutNotSet')}
-        className="min-w-[5.5rem] max-w-[9rem] truncate rounded-full bg-surface-raised px-3 py-1 text-center text-xs font-medium text-secondary"
-      >
-        {displayValue || i18nService.t('shortcutNotSet')}
-      </span>
-      <button
-        type="button"
-        onClick={() => setRecording(true)}
-        title={editLabel}
-        aria-label={editLabel}
-        className="pointer-events-none inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-secondary opacity-0 transition-colors hover:bg-surface-raised hover:text-foreground group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
-      >
-        <EditIcon className="h-4 w-4" />
-      </button>
-    </div>
-  );
-};
-
-const SendShortcutSelect: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => {
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open]);
-
-  const currentLabel = (() => {
-    const opt = SEND_SHORTCUT_OPTIONS.find(o => o.value === value);
-    if (!value) return i18nService.t('shortcutNotSet');
-    if (!opt) return formatShortcutForDisplay(value, { isMac: isMacPlatform });
-    return isMacPlatform ? opt.labelMac : opt.label;
-  })();
-
-  return (
-    <div ref={containerRef} className="flex items-center gap-2">
-      <div className="relative">
-        <div
-          onClick={() => setOpen(!open)}
-          className={`w-28 rounded-lg border px-2.5 py-1 text-xs cursor-pointer select-none text-center outline-none transition-colors
-            dark:bg-claude-darkSurfaceInset bg-claude-surfaceInset dark:text-claude-darkText text-claude-text
-            ${open
-              ? 'border-claude-accent ring-1 ring-claude-accent/30'
-              : 'dark:border-claude-darkBorder border-claude-border hover:border-claude-accent/50'
-            }`}
-        >
-          {currentLabel}
-        </div>
-        {open && (
-          <div className="absolute right-0 mt-1 z-50 min-w-[160px] rounded-xl border dark:border-claude-darkBorder border-claude-border dark:bg-claude-darkSurfaceInset bg-claude-surfaceInset shadow-elevated py-1">
-            {SEND_SHORTCUT_OPTIONS.map((option) => {
-              const label = isMacPlatform ? option.labelMac : option.label;
-              const isActive = value === option.value;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => { onChange(option.value); setOpen(false); }}
-                  className={`flex items-center justify-between w-full px-3 py-1.5 text-xs transition-colors
-                    ${isActive
-                      ? 'dark:text-claude-accent text-claude-accent font-medium'
-                      : 'dark:text-claude-darkText text-claude-text'
-                    } hover:bg-claude-accent/10`}
-                >
-                  <span>{label}</span>
-                  {isActive && <span className="text-claude-accent">✓</span>}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-      <span className="h-6 w-6 shrink-0" aria-hidden="true" />
-    </div>
-  );
-};
-
-const SettingsSwitch: React.FC<{
-  checked: boolean;
-  label: string;
-  disabled?: boolean;
-  onClick: () => void | Promise<void>;
-}> = ({ checked, label, disabled, onClick }) => (
-  <button
-    type="button"
-    role="switch"
-    aria-checked={checked}
-    aria-label={label}
-    onClick={() => {
-      void onClick();
-    }}
-    disabled={disabled}
-    className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
-      disabled ? 'opacity-50 cursor-not-allowed' : ''
-    } ${
-      checked
-        ? 'bg-primary'
-        : 'bg-gray-300 dark:bg-gray-600'
-    }`}
-  >
-    <span
-      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-        checked ? 'translate-x-6' : 'translate-x-1'
-      }`}
-    />
-  </button>
-);
-
-const SettingsToggleRow: React.FC<{
-  title: string;
-  description: string;
-  checked: boolean;
-  disabled?: boolean;
-  onToggle: () => void | Promise<void>;
-}> = ({ title, description, checked, disabled, onToggle }) => (
-  <div>
-    <div className="flex items-center justify-between gap-4">
-      <h4 className="min-w-0 flex-1 text-sm font-medium text-foreground">
-        {title}
-      </h4>
-      <SettingsSwitch
-        checked={checked}
-        label={title}
-        disabled={disabled}
-        onClick={onToggle}
-      />
-    </div>
-    <p className="mt-1 text-sm text-secondary">
-      {description}
-    </p>
-  </div>
-);
-
-// Groups related settings rows into a labeled card (label above a bordered,
-// divider-separated card). Used to categorize the General settings tab.
-const SettingsGroup: React.FC<{
-  title: string;
-  children: React.ReactNode;
-  footer?: React.ReactNode;
-}> = ({ title, children, footer }) => (
-  <section className="space-y-2.5">
-    <h4 className="px-1 text-xs font-semibold uppercase tracking-wider text-secondary">
-      {title}
-    </h4>
-    <div className="divide-y divide-border rounded-xl border border-border bg-surface">
-      {children}
-    </div>
-    {footer}
-  </section>
-);
-
-// A single padded row inside a SettingsGroup card.
-const SettingsRow: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="px-4 py-3.5">{children}</div>
-);
-
-const SettingsNumberInputRow: React.FC<{
-  id: string;
-  title: string;
-  description: string;
-  value: number;
-  min: number;
-  max: number;
-  onChange: (value: number) => void;
-}> = ({ id, title, description, value, min, max, onChange }) => (
-  <div className="flex items-center justify-between gap-4">
-    <div className="min-w-0 flex-1">
-      <label htmlFor={id} className="block text-sm font-medium text-foreground">
-        {title}
-      </label>
-      <p className="mt-1 text-sm text-secondary">
-        {description}
-      </p>
-    </div>
-    <div className="flex shrink-0 items-center gap-2">
-      <input
-        id={id}
-        type="number"
-        min={min}
-        max={max}
-        step={1}
-        value={value}
-        onChange={(event) => {
-          onChange(normalizeFontPreference(event.currentTarget.value, value, min, max));
-        }}
-        onBlur={(event) => {
-          onChange(normalizeFontPreference(event.currentTarget.value, value, min, max));
-        }}
-        className="h-8 w-16 rounded-lg border border-border bg-surface px-2 text-center text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-      />
-      <span className="text-sm text-secondary">px</span>
-    </div>
-  </div>
-);
-
 const Settings: React.FC<SettingsProps> = ({
   onClose,
+  licenseUserId,
   onStartAiSkin,
   initialTab,
   initialTabRequestId,
@@ -1386,6 +1085,14 @@ const Settings: React.FC<SettingsProps> = ({
   } = useSkin();
   // 状态
   const [activeTab, setActiveTab] = useState<TabType>(initialTab ?? 'general');
+  const [settingsView, setSettingsView] = useState<SettingsView>(
+    initialTab ? SettingsView.Detail : SettingsView.Home,
+  );
+  const [settingsSearchQuery, setSettingsSearchQuery] = useState('');
+  const [personalization, setPersonalization] = useState<UserPersonalizationV1>(
+    createDefaultUserPersonalization,
+  );
+  const [isPersonalizationLoading, setIsPersonalizationLoading] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
   const [themeId, setThemeId] = useState<string>(themeService.getDefaultThemeId());
   const [uiFontSize, setUiFontSize] = useState<number>(FontPreferences.UiFontSizeDefault);
@@ -1394,7 +1101,7 @@ const Settings: React.FC<SettingsProps> = ({
   const [autoLaunch, setAutoLaunchState] = useState(false);
   const [useSystemProxy, setUseSystemProxy] = useState(false);
   const [sqliteAutoBackupEnabled, setSqliteAutoBackupEnabled] = useState(false);
-  const [usageAnalyticsEnabled, setUsageAnalyticsEnabled] = useState(true);
+  const usageAnalyticsEnabled = false;
   const [taskCompletionNotificationMode, setTaskCompletionNotificationMode] =
     useState<TaskCompletionNotificationMode>(TaskCompletionNotificationMode.Unfocused);
   const [permissionNotificationsEnabled, setPermissionNotificationsEnabled] = useState(true);
@@ -1499,10 +1206,7 @@ const Settings: React.FC<SettingsProps> = ({
 
   // 创建引用来确保内容区域的滚动
   const contentRef = useRef<HTMLDivElement>(null);
-  // 内容区下方仍有未滚出的内容时，在底部按钮区上方显示渐隐遮罩
-  const [footerFadeVisible, setFooterFadeVisible] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
-  const emailCopiedTimerRef = useRef<number | null>(null);
   const openClawGatewayCopiedTimerRef = useRef<number | null>(null);
   const updateCheckTimerRef = useRef<number | null>(null);
 
@@ -1531,7 +1235,6 @@ const Settings: React.FC<SettingsProps> = ({
 
   // About tab
   const [appVersion, setAppVersion] = useState('');
-  const [emailCopied, setEmailCopied] = useState(false);
   const [isExportingLogs, setIsExportingLogs] = useState(false);
   const [testMode, setTestMode] = useState(false);
   const [logoClickCount, setLogoClickCount] = useState(0);
@@ -1582,21 +1285,6 @@ const Settings: React.FC<SettingsProps> = ({
       mounted = false;
       unsubscribe();
     };
-  }, []);
-
-  const handleCopyContactEmail = useCallback(async () => {
-    const copied = await copyTextToClipboard(ABOUT_CONTACT_EMAIL);
-    reportAboutAction('copy_contact_email', copied ? 'success' : 'failed');
-    if (copied) {
-      setEmailCopied(true);
-      if (emailCopiedTimerRef.current != null) {
-        window.clearTimeout(emailCopiedTimerRef.current);
-      }
-      emailCopiedTimerRef.current = window.setTimeout(() => {
-        setEmailCopied(false);
-        emailCopiedTimerRef.current = null;
-      }, 1200);
-    }
   }, []);
 
   const authUser = useSelector((state: RootState) => state.auth.user);
@@ -1668,17 +1356,12 @@ const Settings: React.FC<SettingsProps> = ({
 
   const handleOpenUserManual = useCallback(() => {
     reportAboutAction('open_user_manual', 'success');
-    void window.electron.shell.openExternal(ABOUT_USER_MANUAL_URL);
+    void window.electron.appInfo.openDocumentation(AppDocumentation.UserManual);
   }, []);
 
-  const handleOpenUserCommunity = useCallback(() => {
-    reportAboutAction('open_user_community', 'success');
-    void window.electron.shell.openExternal(ABOUT_USER_COMMUNITY_URL);
-  }, []);
-
-  const handleOpenServiceTerms = useCallback(() => {
-    reportAboutAction('open_service_terms', 'success');
-    void window.electron.shell.openExternal(ABOUT_SERVICE_TERMS_URL);
+  const handleOpenSecurityNotes = useCallback(() => {
+    reportAboutAction('open_security_notes', 'success');
+    void window.electron.appInfo.openDocumentation(AppDocumentation.Security);
   }, []);
 
   const handleExportLogs = useCallback(async () => {
@@ -1896,9 +1579,6 @@ const Settings: React.FC<SettingsProps> = ({
   }, [isCleaningTempStorage, refreshTempStorageUsage, tempCleanSelectedDirs]);
 
   useEffect(() => () => {
-    if (emailCopiedTimerRef.current != null) {
-      window.clearTimeout(emailCopiedTimerRef.current);
-    }
     if (openClawGatewayCopiedTimerRef.current != null) {
       window.clearTimeout(openClawGatewayCopiedTimerRef.current);
     }
@@ -1945,6 +1625,23 @@ const Settings: React.FC<SettingsProps> = ({
   }, []);
 
   useEffect(() => {
+    let active = true;
+    if (!licenseUserId) {
+      setPersonalization(createDefaultUserPersonalization());
+      setIsPersonalizationLoading(false);
+      return () => { active = false; };
+    }
+    setPersonalization(createDefaultUserPersonalization());
+    setIsPersonalizationLoading(true);
+    void userPersonalizationService.get(licenseUserId).then((value) => {
+      if (!active) return;
+      setPersonalization(value);
+      setIsPersonalizationLoading(false);
+    });
+    return () => { active = false; };
+  }, [licenseUserId]);
+
+  useEffect(() => {
     try {
       const config = configService.getConfig();
 
@@ -1973,7 +1670,6 @@ const Settings: React.FC<SettingsProps> = ({
       setLanguage(config.language);
       setUseSystemProxy(config.useSystemProxy ?? false);
       setSqliteAutoBackupEnabled(config.sqliteAutoBackupEnabled === true);
-      setUsageAnalyticsEnabled(config.usageAnalyticsEnabled !== false);
       {
         const notificationSettings = normalizeNotificationSettings(config.notificationSettings);
         setTaskCompletionNotificationMode(notificationSettings.taskCompletionNotificationMode);
@@ -2055,17 +1751,6 @@ const Settings: React.FC<SettingsProps> = ({
             ...prev,
             minimax: {
               ...prev.minimax,
-              enabled: true,
-              apiKey: config.api.key,
-              baseUrl: config.api.baseUrl
-            }
-          }));
-        } else if (normalizedApiBaseUrl.includes('openapi.youdao.com')) {
-          setActiveProvider('youdaozhiyun');
-          setProviders(prev => ({
-            ...prev,
-            youdaozhiyun: {
-              ...prev.youdaozhiyun,
               enabled: true,
               apiKey: config.api.key,
               baseUrl: config.api.baseUrl
@@ -2237,33 +1922,6 @@ const Settings: React.FC<SettingsProps> = ({
     }
   }, [activeTab]);
 
-  // 跟踪内容区滚动/尺寸/内容变化，决定底部渐隐遮罩是否显示
-  useEffect(() => {
-    const el = contentRef.current;
-    if (!el) return;
-    let frame = 0;
-    const update = () => {
-      frame = 0;
-      setFooterFadeVisible(el.scrollHeight - el.scrollTop - el.clientHeight > 1);
-    };
-    const scheduleUpdate = () => {
-      if (frame) return;
-      frame = requestAnimationFrame(update);
-    };
-    scheduleUpdate();
-    el.addEventListener('scroll', scheduleUpdate, { passive: true });
-    const resizeObserver = new ResizeObserver(scheduleUpdate);
-    resizeObserver.observe(el);
-    const mutationObserver = new MutationObserver(scheduleUpdate);
-    mutationObserver.observe(el, { childList: true, subtree: true });
-    return () => {
-      el.removeEventListener('scroll', scheduleUpdate);
-      resizeObserver.disconnect();
-      mutationObserver.disconnect();
-      if (frame) cancelAnimationFrame(frame);
-    };
-  }, []);
-
   useEffect(() => {
     setNoticeMessage(buildNoticeMessage());
   }, [buildNoticeMessage]);
@@ -2271,7 +1929,11 @@ const Settings: React.FC<SettingsProps> = ({
   useEffect(() => {
     if (initialTab) {
       setActiveTab(initialTab);
+      setSettingsView(SettingsView.Detail);
+    } else {
+      setSettingsView(SettingsView.Home);
     }
+    setSettingsSearchQuery('');
   }, [initialTab, initialTabRequestId]);
 
   // Subscribe to language changes
@@ -2286,34 +1948,6 @@ const Settings: React.FC<SettingsProps> = ({
     });
     return unsubscribe;
   }, [noticeI18nKey, noticeExtra]);
-
-  // Compute visible providers based on language, including active custom_N entries
-  const visibleProviders = useMemo(() => {
-    const visibleKeys = getVisibleProviders(language);
-    const filtered: Partial<ProvidersConfig> = {};
-    for (const key of visibleKeys) {
-      if (providers[key as keyof ProvidersConfig]) {
-        filtered[key as keyof ProvidersConfig] = providers[key as keyof ProvidersConfig];
-      }
-    }
-    // Append custom_N providers that exist in state, sorted by numeric suffix
-    for (const key of CUSTOM_PROVIDER_KEYS) {
-      if (providers[key]) {
-        filtered[key] = providers[key];
-      }
-    }
-    return filtered as ProvidersConfig;
-  }, [language, providers]);
-
-  // Ensure activeProvider is always in visibleProviders when language changes
-  useEffect(() => {
-    const visibleKeys = Object.keys(visibleProviders) as ProviderType[];
-    if (visibleKeys.length > 0 && !visibleKeys.includes(activeProvider)) {
-      // If current activeProvider is not visible, switch to first visible provider
-      const firstEnabledVisible = visibleKeys.find(key => visibleProviders[key]?.enabled);
-      setActiveProvider(firstEnabledVisible ?? visibleKeys[0]);
-    }
-  }, [visibleProviders, activeProvider]);
 
   // Handle adding a new custom provider
   const handleAddCustomProvider = () => {
@@ -2367,9 +2001,11 @@ const Settings: React.FC<SettingsProps> = ({
     // model settings render accesses providers[activeProvider].* without guards,
     // crashing the whole view (white screen).
     if (activeProvider === key) {
-      const visibleKeys = Object.keys(visibleProviders).filter(k => k !== key) as ProviderType[];
-      const firstEnabled = visibleKeys.find(k => visibleProviders[k]?.enabled);
-      setActiveProvider(firstEnabled ?? visibleKeys[0] ?? providerKeys[0]);
+      const availableKeys = providerKeys.filter(providerKey => (
+        providerKey !== key && providers[providerKey] !== undefined
+      ));
+      const firstEnabled = availableKeys.find(providerKey => providers[providerKey]?.enabled);
+      setActiveProvider(firstEnabled ?? availableKeys[0] ?? providerKeys[0]);
     }
     // Persist the deletion immediately so it survives window close
     const updatedProviders = { ...currentConfig.providers };
@@ -3650,6 +3286,10 @@ const Settings: React.FC<SettingsProps> = ({
         }
       }
 
+      if (licenseUserId) {
+        await userPersonalizationService.set(licenseUserId, personalization);
+      }
+
       didSaveRef.current = true;
       onClose();
     } catch (error) {
@@ -3674,21 +3314,37 @@ const Settings: React.FC<SettingsProps> = ({
   }, []);
 
   const handleTabChange = useCallback((tab: TabType) => {
-    if (isBackingUpOpenClawData || isRestoringOpenClawData) return;
-    if (activeTab === 'plugins' && pluginsSettingsRef.current?.guardLeave(() => doTabChange(tab))) {
-      return;
-    }
-    doTabChange(tab);
+    requestSettingsNavigation({
+      activeTab,
+      isBusy: isBackingUpOpenClawData || isRestoringOpenClawData,
+      guardPluginLeave: pluginsSettingsRef.current?.guardLeave,
+      proceed: () => doTabChange(tab),
+    });
   }, [activeTab, doTabChange, isBackingUpOpenClawData, isRestoringOpenClawData]);
 
   // Guarded close: check plugin dirty state before closing
   const guardedClose = useCallback(() => {
-    if (isBackingUpOpenClawData || isRestoringOpenClawData) return;
-    if (activeTab === 'plugins' && pluginsSettingsRef.current?.guardLeave(() => onClose())) {
-      return;
-    }
-    onClose();
+    requestSettingsNavigation({
+      activeTab,
+      isBusy: isBackingUpOpenClawData || isRestoringOpenClawData,
+      guardPluginLeave: pluginsSettingsRef.current?.guardLeave,
+      proceed: onClose,
+    });
   }, [activeTab, isBackingUpOpenClawData, isRestoringOpenClawData, onClose]);
+
+  const doReturnToSettingsHome = useCallback(() => {
+    setSettingsView(SettingsView.Home);
+    setSettingsSearchQuery('');
+  }, []);
+
+  const handleReturnToSettingsHome = useCallback(() => {
+    requestSettingsNavigation({
+      activeTab,
+      isBusy: isBackingUpOpenClawData || isRestoringOpenClawData,
+      guardPluginLeave: pluginsSettingsRef.current?.guardLeave,
+      proceed: doReturnToSettingsHome,
+    });
+  }, [activeTab, doReturnToSettingsHome, isBackingUpOpenClawData, isRestoringOpenClawData]);
 
   const shortcutCommandMap = useMemo(
     () => new Map(SHORTCUT_COMMANDS.map(command => [command.key, command])),
@@ -4459,35 +4115,37 @@ const Settings: React.FC<SettingsProps> = ({
     }
   };
 
-  // 渲染标签页
-  const sidebarTabs: { key: TabType; label: string; icon: React.ReactNode }[] = (() => {
-    const allTabs = [
-      { key: 'general' as TabType,        label: i18nService.t('general'),        icon: <SettingsSlidersIcon className="h-5 w-5" /> },
-      { key: 'appearance' as TabType,     label: i18nService.t('appearance'),     icon: <SunIcon className="h-5 w-5" /> },
-      { key: 'coworkAgentEngine' as TabType, label: i18nService.t('coworkAgentEngine'), icon: <CpuChipIcon className="h-5 w-5" /> },
-      { key: 'model' as TabType,          label: i18nService.t('settingsCustomModel'), icon: <CubeIcon className="h-5 w-5" /> },
-      { key: 'im' as TabType,             label: i18nService.t('imBot'),          icon: <ChatBubbleLeftIcon className="h-5 w-5" /> },
-      { key: 'browserWebAccess' as TabType, label: i18nService.t('browserWebAccessTab'), icon: <GlobeAltIcon className="h-5 w-5" /> },
-      { key: 'email' as TabType,          label: i18nService.t('emailTab'),       icon: <EnvelopeIcon className="h-5 w-5" /> },
-      { key: 'coworkMemory' as TabType,   label: i18nService.t('coworkMemoryTitle'), icon: <BrainIcon className="h-5 w-5" /> },
-      { key: 'coworkDreaming' as TabType, label: i18nService.t('coworkMemoryTabDreaming'), icon: <DreamingTabIcon className="h-5 w-5" /> },
-      { key: 'plugins' as TabType,        label: i18nService.t('pluginsTab'),     icon: <PlugIcon className="h-5 w-5" /> },
-      { key: 'shortcuts' as TabType,      label: i18nService.t('shortcuts'),      icon: <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-5 w-5"><rect x="2" y="4" width="20" height="14" rx="2" /><line x1="6" y1="8" x2="8" y2="8" /><line x1="10" y1="8" x2="12" y2="8" /><line x1="14" y1="8" x2="16" y2="8" /><line x1="6" y1="12" x2="8" y2="12" /><line x1="10" y1="12" x2="14" y2="12" /><line x1="16" y1="12" x2="18" y2="12" /><line x1="8" y1="15.5" x2="16" y2="15.5" /></svg> },
-      { key: 'about' as TabType,          label: i18nService.t('about'),          icon: <InformationCircleIcon className="h-5 w-5" /> },
-    ];
-    // Filter out tabs hidden by enterprise config
-    // Filter out tabs with 'hide' action in enterprise config
-    // e.g., ui: { "settings.im": "hide" } → hide the 'im' tab
-    const ui = enterpriseConfig?.ui;
-    if (ui) {
-      return allTabs.filter(tab => ui[`settings.${tab.key}`] !== 'hide');
-    }
-    return allTabs;
-  })();
+  const visibleSettingsModules = useMemo(() => getVisibleSettingsModules({
+    isAuthenticated: Boolean(licenseUserId),
+    enterpriseUi: enterpriseConfig?.ui,
+  }), [enterpriseConfig?.ui, licenseUserId]);
+  const visibleSettingsTabIds = useMemo(
+    () => visibleSettingsModules.flatMap((module) => module.tabs.map((tab) => tab.id)),
+    [visibleSettingsModules],
+  );
+  const activeSettingsModule = useMemo(
+    () => findSettingsModuleByTab(visibleSettingsModules, activeTab),
+    [activeTab, visibleSettingsModules],
+  );
+  const settingsSearchResults = searchSettings(
+    settingsSearchQuery,
+    visibleSettingsModules,
+    i18nService.t.bind(i18nService),
+  );
 
-  const activeTabLabel = useMemo(() => {
-    return sidebarTabs.find(t => t.key === activeTab)?.label ?? '';
-  }, [activeTab, sidebarTabs]);
+  useEffect(() => {
+    if (settingsView !== SettingsView.Detail) return;
+    if (!isSettingsTabVisible(visibleSettingsModules, activeTab)) {
+      setSettingsView(SettingsView.Home);
+    }
+  }, [activeTab, settingsView, visibleSettingsModules]);
+
+  const handleOpenSettingsTab = useCallback((tab: TabType) => {
+    if (!visibleSettingsTabIds.includes(tab)) return;
+    setSettingsSearchQuery('');
+    setSettingsView(SettingsView.Detail);
+    handleTabChange(tab);
+  }, [handleTabChange, visibleSettingsTabIds]);
 
   useEffect(() => {
     const handleSettingsTabShortcut = (event: KeyboardEvent) => {
@@ -4499,15 +4157,16 @@ const Settings: React.FC<SettingsProps> = ({
       if (!command) return;
 
       const targetTab = SETTINGS_TAB_SHORTCUT_ACTIONS[command.key];
-      if (!targetTab || !sidebarTabs.some(tab => tab.key === targetTab)) return;
+      if (!targetTab || !visibleSettingsTabIds.includes(targetTab)) return;
 
       event.preventDefault();
       handleTabChange(targetTab);
+      setSettingsView(SettingsView.Detail);
     };
 
     document.addEventListener('keydown', handleSettingsTabShortcut);
     return () => document.removeEventListener('keydown', handleSettingsTabShortcut);
-  }, [shortcuts, sidebarTabs, handleTabChange]);
+  }, [shortcuts, visibleSettingsTabIds, handleTabChange]);
 
   const handleUiFontSizeChange = useCallback((nextValue: number) => {
     setUiFontSize(nextValue);
@@ -4551,201 +4210,23 @@ const Settings: React.FC<SettingsProps> = ({
     }
   }, [selectThemeById]);
 
-  const renderAppearanceSettings = () => (
-    <div className="space-y-8">
-      <div>
-        <h4 className="text-sm font-medium mb-3" style={{ color: 'var(--lobster-text-primary)' }}>
-          {i18nService.t('appearance')}
-        </h4>
-
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          {(['light', 'dark', 'system'] as const).map((mode) => {
-            const isSelected = !activeSkin && theme === mode;
-            return (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => void handleThemeModeSelection(mode)}
-                disabled={isAppearanceChanging}
-                className="flex flex-col items-center rounded-xl border-2 p-3 transition-colors cursor-pointer disabled:cursor-wait disabled:opacity-60"
-                style={{
-                  borderColor: isSelected ? 'var(--lobster-primary)' : 'var(--lobster-border)',
-                  backgroundColor: isSelected ? 'var(--lobster-primary-muted)' : undefined,
-                }}
-              >
-                <svg viewBox="0 0 120 80" className="w-full h-auto rounded-md mb-2 overflow-hidden" xmlns="http://www.w3.org/2000/svg">
-                  {mode === 'light' && (
-                    <>
-                      <rect width="120" height="80" fill="#F8F9FB" />
-                      <rect x="0" y="0" width="30" height="80" fill="#EBEDF0" />
-                      <rect x="4" y="8" width="22" height="4" rx="2" fill="#C8CBD0" />
-                      <rect x="4" y="16" width="18" height="3" rx="1.5" fill="#D5D7DB" />
-                      <rect x="4" y="22" width="20" height="3" rx="1.5" fill="#D5D7DB" />
-                      <rect x="4" y="28" width="16" height="3" rx="1.5" fill="#D5D7DB" />
-                      <rect x="36" y="8" width="78" height="64" rx="4" fill="#FFFFFF" />
-                      <rect x="42" y="16" width="50" height="4" rx="2" fill="#D5D7DB" />
-                      <rect x="42" y="24" width="66" height="3" rx="1.5" fill="#E2E4E7" />
-                      <rect x="42" y="30" width="60" height="3" rx="1.5" fill="#E2E4E7" />
-                      <rect x="42" y="36" width="55" height="3" rx="1.5" fill="#E2E4E7" />
-                      <rect x="42" y="46" width="40" height="4" rx="2" fill="#D5D7DB" />
-                      <rect x="42" y="54" width="66" height="3" rx="1.5" fill="#E2E4E7" />
-                      <rect x="42" y="60" width="58" height="3" rx="1.5" fill="#E2E4E7" />
-                    </>
-                  )}
-                  {mode === 'dark' && (
-                    <>
-                      <rect width="120" height="80" fill="#0F1117" />
-                      <rect x="0" y="0" width="30" height="80" fill="#151820" />
-                      <rect x="4" y="8" width="22" height="4" rx="2" fill="#3A3F4B" />
-                      <rect x="4" y="16" width="18" height="3" rx="1.5" fill="#2A2F3A" />
-                      <rect x="4" y="22" width="20" height="3" rx="1.5" fill="#2A2F3A" />
-                      <rect x="4" y="28" width="16" height="3" rx="1.5" fill="#2A2F3A" />
-                      <rect x="36" y="8" width="78" height="64" rx="4" fill="#1A1D27" />
-                      <rect x="42" y="16" width="50" height="4" rx="2" fill="#3A3F4B" />
-                      <rect x="42" y="24" width="66" height="3" rx="1.5" fill="#252930" />
-                      <rect x="42" y="30" width="60" height="3" rx="1.5" fill="#252930" />
-                      <rect x="42" y="36" width="55" height="3" rx="1.5" fill="#252930" />
-                      <rect x="42" y="46" width="40" height="4" rx="2" fill="#3A3F4B" />
-                      <rect x="42" y="54" width="66" height="3" rx="1.5" fill="#252930" />
-                      <rect x="42" y="60" width="58" height="3" rx="1.5" fill="#252930" />
-                    </>
-                  )}
-                  {mode === 'system' && (
-                    <>
-                      <defs>
-                        <clipPath id="left-half">
-                          <rect x="0" y="0" width="60" height="80" />
-                        </clipPath>
-                        <clipPath id="right-half">
-                          <rect x="60" y="0" width="60" height="80" />
-                        </clipPath>
-                      </defs>
-                      <g clipPath="url(#left-half)">
-                        <rect width="120" height="80" fill="#F8F9FB" />
-                        <rect x="0" y="0" width="30" height="80" fill="#EBEDF0" />
-                        <rect x="4" y="8" width="22" height="4" rx="2" fill="#C8CBD0" />
-                        <rect x="4" y="16" width="18" height="3" rx="1.5" fill="#D5D7DB" />
-                        <rect x="4" y="22" width="20" height="3" rx="1.5" fill="#D5D7DB" />
-                        <rect x="4" y="28" width="16" height="3" rx="1.5" fill="#D5D7DB" />
-                        <rect x="36" y="8" width="78" height="64" rx="4" fill="#FFFFFF" />
-                        <rect x="42" y="16" width="50" height="4" rx="2" fill="#D5D7DB" />
-                        <rect x="42" y="24" width="66" height="3" rx="1.5" fill="#E2E4E7" />
-                        <rect x="42" y="30" width="60" height="3" rx="1.5" fill="#E2E4E7" />
-                        <rect x="42" y="36" width="55" height="3" rx="1.5" fill="#E2E4E7" />
-                        <rect x="42" y="46" width="40" height="4" rx="2" fill="#D5D7DB" />
-                        <rect x="42" y="54" width="66" height="3" rx="1.5" fill="#E2E4E7" />
-                      </g>
-                      <g clipPath="url(#right-half)">
-                        <rect width="120" height="80" fill="#0F1117" />
-                        <rect x="0" y="0" width="30" height="80" fill="#151820" />
-                        <rect x="4" y="8" width="22" height="4" rx="2" fill="#3A3F4B" />
-                        <rect x="4" y="16" width="18" height="3" rx="1.5" fill="#2A2F3A" />
-                        <rect x="4" y="22" width="20" height="3" rx="1.5" fill="#2A2F3A" />
-                        <rect x="4" y="28" width="16" height="3" rx="1.5" fill="#2A2F3A" />
-                        <rect x="36" y="8" width="78" height="64" rx="4" fill="#1A1D27" />
-                        <rect x="42" y="16" width="50" height="4" rx="2" fill="#3A3F4B" />
-                        <rect x="42" y="24" width="66" height="3" rx="1.5" fill="#252930" />
-                        <rect x="42" y="30" width="60" height="3" rx="1.5" fill="#252930" />
-                        <rect x="42" y="36" width="55" height="3" rx="1.5" fill="#252930" />
-                        <rect x="42" y="46" width="40" height="4" rx="2" fill="#3A3F4B" />
-                        <rect x="42" y="54" width="66" height="3" rx="1.5" fill="#252930" />
-                      </g>
-                      <line x1="60" y1="0" x2="60" y2="80" stroke="#888" strokeWidth="0.5" />
-                    </>
-                  )}
-                </svg>
-                <span className="text-xs font-medium" style={{ color: isSelected ? 'var(--lobster-primary)' : 'var(--lobster-text-primary)' }}>
-                  {i18nService.t(mode)}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        <h4 className="text-sm font-medium mb-3 mt-5" style={{ color: 'var(--lobster-text-primary)' }}>
-          {i18nService.t('themeColor')}
-        </h4>
-        {(() => {
-          const allThemes = themeService.getAllThemes();
-          const classicThemes = allThemes.filter(t => t.meta.id === 'classic-light' || t.meta.id === 'classic-dark');
-          const otherThemes = allThemes.filter(t => t.meta.id !== 'classic-light' && t.meta.id !== 'classic-dark');
-          const renderTile = (t: import('../theme').ThemeDefinition) => {
-            const isSelected = !activeSkin && themeId === t.meta.id;
-            const [bg, c1, c2, c3] = t.meta.preview;
-            return (
-              <button
-                key={t.meta.id}
-                type="button"
-                onClick={() => void handleThemeIdSelection(t.meta.id)}
-                disabled={isAppearanceChanging}
-                className="flex flex-col items-center rounded-xl border-2 p-2 transition-colors cursor-pointer disabled:cursor-wait disabled:opacity-60"
-                style={{
-                  borderColor: isSelected ? 'var(--lobster-primary)' : 'var(--lobster-border)',
-                  backgroundColor: isSelected ? 'var(--lobster-primary-muted)' : undefined,
-                }}
-              >
-                <svg viewBox="0 0 80 48" className="w-full h-auto rounded-md mb-1.5 overflow-hidden" xmlns="http://www.w3.org/2000/svg">
-                  <rect width="80" height="48" fill={bg} />
-                  <rect x="4" y="6" width="20" height="36" rx="3" fill={c1} opacity="0.7" />
-                  <rect x="28" y="6" width="48" height="36" rx="3" fill={c2} opacity="0.5" />
-                  <circle cx="52" cy="24" r="8" fill={c3} opacity="0.8" />
-                  <rect x="32" y="34" width="40" height="4" rx="2" fill={c1} opacity="0.6" />
-                </svg>
-                <span className="text-[10px] font-medium truncate w-full text-center" style={{ color: isSelected ? 'var(--lobster-primary)' : 'var(--lobster-text-primary)' }}>
-                  {i18nService.t('theme-name-' + t.meta.id) || t.meta.name}
-                </span>
-              </button>
-            );
-          };
-          return (
-            <>
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                {classicThemes.map(renderTile)}
-              </div>
-              <div className="grid grid-cols-4 gap-3">
-                {otherThemes.map(renderTile)}
-              </div>
-            </>
-          );
-        })()}
-
-        <SkinSettingsSection onStartAiSkin={onStartAiSkin} />
-
-        <div className="mt-5 divide-y divide-border rounded-xl border border-border bg-surface">
-          <div className="px-4 py-3">
-            <SettingsNumberInputRow
-              id="ui-font-size"
-              title={i18nService.t('uiFontSize')}
-              description={i18nService.t('uiFontSizeDescription')}
-              value={uiFontSize}
-              min={FontPreferences.UiFontSizeMin}
-              max={FontPreferences.UiFontSizeMax}
-              onChange={handleUiFontSizeChange}
-            />
-          </div>
-          <div className="px-4 py-3">
-            <SettingsNumberInputRow
-              id="code-font-size"
-              title={i18nService.t('codeFontSize')}
-              description={i18nService.t('codeFontSizeDescription')}
-              value={codeFontSize}
-              min={FontPreferences.CodeFontSizeMin}
-              max={FontPreferences.CodeFontSizeMax}
-              onChange={handleCodeFontSizeChange}
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
   const renderTabContent = () => {
     switch(activeTab) {
+      case 'personalization':
+        return (
+          <PersonalizationSettings
+            value={personalization}
+            onChange={setPersonalization}
+            disabled={isPersonalizationLoading}
+          />
+        );
       case 'general':
         return (
-          <div className="space-y-8">
-            {/* Group: General basics */}
-            <SettingsGroup title={i18nService.t('settingsGroupBasics')}>
+          <div>
+            <SettingsGroup
+              title={i18nService.t('settingsSectionApplicationBehavior')}
+              description={i18nService.t('settingsSectionApplicationBehaviorDescription')}
+            >
               <SettingsRow>
                 <div className="flex items-center justify-between gap-4">
                   <h4 className="text-sm font-medium text-foreground">
@@ -4849,7 +4330,8 @@ const Settings: React.FC<SettingsProps> = ({
 
             {/* Group: Notifications */}
             <SettingsGroup
-              title={i18nService.t('settingsGroupNotifications')}
+              title={i18nService.t('settingsSectionNotifications')}
+              description={i18nService.t('settingsSectionNotificationsDescription')}
               footer={
                 (window.electron.platform === 'win32' ||
                   (window.electron.platform === 'darwin' && !import.meta.env.DEV)) && (
@@ -4919,7 +4401,10 @@ const Settings: React.FC<SettingsProps> = ({
             </SettingsGroup>
 
             {/* Group: Scheduled tasks */}
-            <SettingsGroup title={i18nService.t('scheduledTasks')}>
+            <SettingsGroup
+              title={i18nService.t('settingsSectionAutomations')}
+              description={i18nService.t('settingsSectionAutomationsDescription')}
+            >
               <SettingsRow>
                 <SettingsToggleRow
                   title={i18nService.t('skipMissedJobs')}
@@ -4933,7 +4418,10 @@ const Settings: React.FC<SettingsProps> = ({
             </SettingsGroup>
 
             {/* Group: Data & privacy */}
-            <SettingsGroup title={i18nService.t('settingsGroupDataPrivacy')}>
+            <SettingsGroup
+              title={i18nService.t('settingsSectionDataPrivacy')}
+              description={i18nService.t('settingsSectionDataPrivacyDescription')}
+            >
               <SettingsRow>
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0 flex-1">
@@ -4983,29 +4471,33 @@ const Settings: React.FC<SettingsProps> = ({
                 />
               </SettingsRow>
 
-              <SettingsRow>
-                <SettingsToggleRow
-                  title={i18nService.t('usageAnalyticsEnabled')}
-                  description={i18nService.t('usageAnalyticsEnabledDescription')}
-                  checked={usageAnalyticsEnabled}
-                  onToggle={() => {
-                    setUsageAnalyticsEnabled((prev) => !prev);
-                  }}
-                />
-              </SettingsRow>
             </SettingsGroup>
           </div>
         );
 
       case 'appearance':
-        return renderAppearanceSettings();
+        return (
+          <AppearanceSettings
+            theme={theme}
+            themeId={themeId}
+            hasActiveSkin={Boolean(activeSkin)}
+            isChanging={isAppearanceChanging}
+            uiFontSize={uiFontSize}
+            codeFontSize={codeFontSize}
+            onThemeModeChange={handleThemeModeSelection}
+            onThemeIdChange={handleThemeIdSelection}
+            onUiFontSizeChange={handleUiFontSizeChange}
+            onCodeFontSizeChange={handleCodeFontSizeChange}
+            onStartAiSkin={onStartAiSkin}
+          />
+        );
 
       case 'email':
         return <EmailSkillConfig />;
 
       case 'coworkAgentEngine':
         return (
-          <div className="space-y-8 pb-2">
+          <div className="space-y-9 pb-2">
             {isOpenClawAgentEngine && (
               <>
                 <section className="space-y-3">
@@ -5013,9 +4505,9 @@ const Settings: React.FC<SettingsProps> = ({
                     {i18nService.t('openClawRuntimeStatusTitle')}
                   </h4>
 
-                  <div className="rounded-xl border border-border bg-surface p-4">
+                  <div className="border-y border-border bg-background py-4">
                     <div className="flex items-start gap-3.5">
-                      <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${openClawStatusTone.iconClassName}`}>
+                      <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center ${openClawStatusTone.iconClassName}`}>
                         <OpenClawStatusIcon className={`h-5 w-5 ${openClawStatusTone.spinIcon ? 'animate-spin' : ''}`} />
                       </span>
                       <div className="min-w-0 flex-1">
@@ -5082,7 +4574,7 @@ const Settings: React.FC<SettingsProps> = ({
                     {i18nService.t('openClawBackgroundRuntimeTitle')}
                   </h4>
 
-                  <div className="rounded-xl border border-border bg-surface p-4">
+                  <div className="border-y border-border bg-background py-4">
                     <div className="flex items-start gap-3.5">
                       <span
                         className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors ${
@@ -5119,7 +4611,7 @@ const Settings: React.FC<SettingsProps> = ({
                     {i18nService.t('openClawMaintenanceTitle')}
                   </h4>
 
-                  <div className="overflow-hidden rounded-xl border border-border bg-surface divide-y divide-border">
+                  <div className="divide-y divide-border border-y border-border bg-background">
                     <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex min-w-0 items-start gap-3">
                         <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-muted text-primary">
@@ -5290,9 +4782,42 @@ const Settings: React.FC<SettingsProps> = ({
           }
         }
         return (
-          <div className="flex flex-col h-full space-y-4">
+          <div>
+            <SettingsSection
+              title={i18nService.t('coworkMemoryEnabled')}
+              description={i18nService.t('coworkMemoryEnabledHint')}
+            >
+              <SettingsField>
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{i18nService.t('coworkMemoryEnabled')}</p>
+                    <p className="mt-1 text-xs text-secondary">{i18nService.t('coworkMemoryLegacyNotice')}</p>
+                  </div>
+                  <SettingsSwitch
+                    checked={coworkMemoryEnabled}
+                    label={i18nService.t('coworkMemoryEnabled')}
+                    onClick={() => setCoworkMemoryEnabled((enabled) => !enabled)}
+                  />
+                </div>
+              </SettingsField>
+              <SettingsField>
+                <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs text-secondary">{i18nService.t('coworkMemoryStatsSummary')}</p>
+                    <p className="mt-1 font-mono text-lg text-foreground">{coworkMemoryStats?.total ?? '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-secondary">{i18nService.t('coworkMemoryTabEmbedding')}</p>
+                    <p className="mt-1 text-sm font-medium text-foreground">
+                      {embeddingEnabled ? embeddingProvider : i18nService.t('disabled')}
+                    </p>
+                  </div>
+                </div>
+              </SettingsField>
+            </SettingsSection>
+
             <div
-              className="flex gap-6 border-b border-border shrink-0"
+              className="flex shrink-0 gap-6 border-b border-border"
               role="tablist"
               aria-label={i18nService.t('coworkMemoryTitle')}
             >
@@ -5313,9 +4838,9 @@ const Settings: React.FC<SettingsProps> = ({
                 </button>
               ))}
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto">
+            <div className="pt-5">
               {memoryTab === 'entries' && (
-                <div className="space-y-4 rounded-xl border px-4 py-4 border-border">
+                <div className="space-y-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="space-y-1">
                       <div className="text-sm font-medium text-foreground">
@@ -5360,7 +4885,7 @@ const Settings: React.FC<SettingsProps> = ({
                         className="w-full rounded-lg border px-3 py-2 text-sm border-border bg-surface"
                       />
 
-                      <div className="rounded-lg border border-border">
+                      <div className="border-y border-border">
                         {coworkMemoryListLoading ? (
                           <div className="px-3 py-3 text-xs text-secondary">
                             {i18nService.t('loading')}
@@ -5467,7 +4992,7 @@ const Settings: React.FC<SettingsProps> = ({
                         onChange={(event) => setCoworkMemoryRawText(event.target.value)}
                         spellCheck={false}
                         autoFocus
-                        className="min-h-0 w-full flex-1 resize-none bg-transparent px-5 pt-1 pb-4 text-xs font-mono leading-relaxed text-foreground focus:outline-none"
+                        className="min-h-0 w-full flex-1 resize-none bg-transparent px-5 pt-1 pb-4 text-xs font-mono leading-relaxed text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40"
                       />
                       <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border/60 px-5 py-3">
                         <button
@@ -5538,7 +5063,6 @@ const Settings: React.FC<SettingsProps> = ({
           <ModelSettingsSection
             providers={providers}
             activeProvider={activeProvider}
-            visibleProviders={visibleProviders}
             showApiKey={showApiKey}
             setShowApiKey={setShowApiKey}
             isImportingProviders={isImportingProviders}
@@ -5610,10 +5134,14 @@ const Settings: React.FC<SettingsProps> = ({
             <p className="text-xs leading-5 text-secondary">
               {i18nService.t('shortcutScopeHint')}
             </p>
-            <div className="overflow-hidden rounded-xl border border-border bg-surface">
+            <div role="table" className="border-y border-border bg-background">
+              <div role="row" className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-secondary">
+                <span role="columnheader">{i18nService.t('settingsShortcutsCommandColumn')}</span>
+                <span role="columnheader" className="text-right">{i18nService.t('settingsShortcutsKeyColumn')}</span>
+              </div>
               {filteredShortcutGroups.length > 0 ? filteredShortcutGroups.map((group, groupIndex) => (
                 <div key={group.titleKey}>
-                  <div className={`border-border-subtle bg-surface-raised/60 px-4 py-2 text-xs font-medium uppercase tracking-wide text-secondary ${
+                  <div role="row" className={`border-border-subtle bg-surface-raised/60 px-4 py-2 text-xs font-medium uppercase tracking-wide text-secondary ${
                     groupIndex === 0 ? '' : 'border-t'
                   }`}>
                     {i18nService.t(group.titleKey)}
@@ -5624,11 +5152,12 @@ const Settings: React.FC<SettingsProps> = ({
                     return (
                       <div
                         key={command.key}
+                        role="row"
                         className={`group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 ${
                           commandIndex === 0 ? '' : 'border-t border-border-subtle'
                         }`}
                       >
-                        <div className="min-w-0">
+                        <div role="cell" className="min-w-0">
                           <div className="truncate text-xs font-medium text-foreground">
                             {commandLabel}
                           </div>
@@ -5636,7 +5165,7 @@ const Settings: React.FC<SettingsProps> = ({
                             {getShortcutCommandText(command, 'descriptionKey')}
                           </div>
                         </div>
-                        <div className="flex items-center justify-end gap-2">
+                        <div role="cell" className="flex items-center justify-end gap-2">
                           {command.inputType === 'send' ? (
                             <SendShortcutSelect
                               value={value}
@@ -5697,32 +5226,44 @@ const Settings: React.FC<SettingsProps> = ({
 
       case 'about':
         return (
-          <div className="flex min-h-full flex-col items-center pt-6 pb-3">
-            {/* Logo & App Name */}
-            <img
-              src="logo.png"
-              alt="LobsterAI"
-              className="w-16 h-16 mb-3 cursor-pointer select-none"
-              onClick={(e) => {
-                if (!e.altKey || !e.shiftKey) return;
+          <div>
+            <section className="grid gap-6 pb-9 lg:grid-cols-[minmax(0,220px)_minmax(0,1fr)] lg:gap-10">
+              <div className="flex items-start gap-4 lg:block">
+                <img
+                  src="logo.png"
+                  alt={BRAND.displayName}
+                  className="h-16 w-16 cursor-pointer select-none border border-border object-contain lg:h-20 lg:w-20"
+                  onClick={(event) => {
+                    if (!event.altKey || !event.shiftKey) return;
+                    const next = logoClickCount + 1;
+                    setLogoClickCount(next);
+                    if (next >= 10 && !testModeUnlocked) setTestModeUnlocked(true);
+                  }}
+                />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-secondary">
+                  {BRAND.nameEn}
+                </p>
+                <h3 className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
+                  {BRAND.displayName}
+                </h3>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-secondary">
+                  {i18nService.t('settingsTabAboutDescription')}
+                </p>
+              </div>
+            </section>
 
-                const next = logoClickCount + 1;
-                setLogoClickCount(next);
-                if (next >= 10 && !testModeUnlocked) {
-                  setTestModeUnlocked(true);
-                }
-              }}
-            />
-            <h3 className="text-lg font-semibold text-foreground">LobsterAI</h3>
-            <span className="text-xs text-secondary mt-1">v{appVersion}</span>
-
-            {/* Info Card */}
-            <div className="w-full mt-8 rounded-xl border border-border overflow-hidden">
-              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 border-b border-border">
-                <span className="shrink-0 text-sm text-foreground">{i18nService.t('aboutVersion')}</span>
-                <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-                  <span className="text-sm text-secondary">{appVersion}</span>
-                  {!enterpriseConfig?.disableUpdate && (
+            <SettingsSection
+              title={i18nService.t('settingsAboutProductInfo')}
+              description={i18nService.t('settingsAboutProductInfoDescription')}
+            >
+              <SettingsField>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span className="text-sm text-foreground">{i18nService.t('aboutVersion')}</span>
+                  <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+                    <span className="font-mono text-sm text-secondary">{BRAND.version}</span>
+                    {BRAND.features.officialUpdates && !enterpriseConfig?.disableUpdate && (
                   <button
                     type="button"
                     disabled={updateCheckStatus === 'checking' || updateCheckStatus === 'downloading'}
@@ -5730,67 +5271,74 @@ const Settings: React.FC<SettingsProps> = ({
                       e.stopPropagation();
                       void handleCheckUpdate();
                     }}
-                    className="text-xs px-2 py-0.5 rounded-md border border-border text-secondary hover:text-primary dark:hover:text-primary hover:border-primary dark:hover:border-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="border border-border px-2 py-1 text-xs text-secondary transition-colors hover:border-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {updateButtonLabel}
                   </button>
-                  )}
-                  {enterpriseConfig?.disableUpdate && (
-                  <span className="text-xs text-claude-textSecondary dark:text-claude-darkTextSecondary">
-                    {i18nService.t('settings.enterprise.managed')}
-                  </span>
-                  )}
+                    )}
+                    {enterpriseConfig?.disableUpdate && (
+                      <span className="text-xs text-secondary">{i18nService.t('settings.enterprise.managed')}</span>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 border-b border-border">
-                <span className="shrink-0 text-sm text-foreground">{i18nService.t('aboutContactEmail')}</span>
-                <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+              </SettingsField>
+              {BRAND.contact.email && (
+                <SettingsField>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <span className="text-sm text-foreground">{i18nService.t('aboutContactEmail')}</span>
+                    <span className="min-w-0 break-all text-right text-sm text-secondary">{BRAND.contact.email}</span>
+                  </div>
+                </SettingsField>
+              )}
+            </SettingsSection>
+
+            <SettingsSection
+              title={i18nService.t('settingsAboutSupportResources')}
+              description={i18nService.t('settingsAboutSupportResourcesDescription')}
+            >
+              {[
+                {
+                  label: i18nService.getLanguage() === 'zh'
+                    ? BRAND.documents.userGuide.labelZh
+                    : BRAND.documents.userGuide.labelEn,
+                  action: handleOpenUserManual,
+                },
+                {
+                  label: i18nService.getLanguage() === 'zh'
+                    ? BRAND.documents.security.labelZh
+                    : BRAND.documents.security.labelEn,
+                  action: handleOpenSecurityNotes,
+                },
+              ].map((item) => (
+                <SettingsField key={item.label}>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm text-foreground">{item.label}</span>
+                    <button
+                      type="button"
+                      onClick={(event) => { event.stopPropagation(); item.action(); }}
+                      className="text-sm font-medium text-foreground underline-offset-4 hover:underline"
+                    >
+                      {i18nService.t('aboutViewDocument')}
+                    </button>
+                  </div>
+                </SettingsField>
+              ))}
+              <SettingsField>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm text-foreground">{i18nService.t('aboutExportLogs')}</span>
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void handleCopyContactEmail();
-                    }}
-                    title={i18nService.t('copyToClipboard')}
-                    className="min-w-0 break-all text-right text-sm text-secondary bg-transparent border-none appearance-none p-0 m-0 cursor-pointer focus:outline-none"
+                    onClick={(event) => { event.stopPropagation(); void handleExportLogs(); }}
+                    disabled={isExportingLogs}
+                    className="text-sm font-medium text-foreground underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {ABOUT_CONTACT_EMAIL}
+                    {isExportingLogs ? i18nService.t('aboutExportingLogs') : i18nService.t('aboutExportLogs')}
                   </button>
-                  {emailCopied && (
-                    <span className="text-[11px] leading-4 text-emerald-600 dark:text-emerald-400">
-                      {i18nService.t('copied')}
-                    </span>
-                  )}
                 </div>
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 border-b border-border">
-                <span className="shrink-0 text-sm text-foreground">{i18nService.t('aboutUserCommunity')}</span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleOpenUserCommunity();
-                  }}
-                  className="min-w-0 break-all text-right text-sm text-secondary hover:text-primary dark:hover:text-primary bg-transparent border-none appearance-none px-1.5 py-0.5 -mx-1.5 -my-0.5 rounded-md cursor-pointer focus:outline-none hover:bg-surface-raised transition-colors"
-                >
-                  {ABOUT_USER_COMMUNITY_URL}
-                </button>
-              </div>
-              <div className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3${testModeUnlocked ? ' border-b border-border' : ''}`}>
-                <span className="shrink-0 text-sm text-foreground">{i18nService.t('aboutUserManual')}</span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleOpenUserManual();
-                  }}
-                  className="min-w-0 break-all text-right text-sm text-secondary hover:text-primary dark:hover:text-primary bg-transparent border-none appearance-none px-1.5 py-0.5 -mx-1.5 -my-0.5 rounded-md cursor-pointer focus:outline-none hover:bg-surface-raised transition-colors"
-                >
-                  {ABOUT_USER_MANUAL_URL}
-                </button>
-              </div>
+              </SettingsField>
               {testModeUnlocked && (
-                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3">
+                <SettingsField>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                   <span className="shrink-0 text-sm text-foreground">{i18nService.t('testMode')}</span>
                   <button
                     type="button"
@@ -5807,44 +5355,23 @@ const Settings: React.FC<SettingsProps> = ({
                       }`}
                     />
                   </button>
-                </div>
+                  </div>
+                </SettingsField>
               )}
-            </div>
+            </SettingsSection>
 
-            {/* Footer */}
-            <div className="mt-auto w-full pt-14 pb-2 flex flex-col items-center">
-              <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-sm text-secondary">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleOpenServiceTerms();
-                  }}
-                  className="bg-transparent border-none appearance-none px-1.5 py-0.5 -mx-1.5 -my-0.5 rounded-md cursor-pointer hover:text-primary dark:hover:text-primary transition-colors"
-                >
-                  {i18nService.t('aboutServiceTerms')}
-                </button>
-                <span className="text-xs opacity-40">|</span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void handleExportLogs();
-                  }}
-                  disabled={isExportingLogs}
-                  className="bg-transparent border-none appearance-none px-1.5 py-0.5 -mx-1.5 -my-0.5 rounded-md cursor-pointer hover:text-primary dark:hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isExportingLogs ? i18nService.t('aboutExportingLogs') : i18nService.t('aboutExportLogs')}
-                </button>
-              </div>
-
-              <p className="mt-5 text-center text-xs text-secondary">
-                {i18nService.t('copyrightHolder')}
-              </p>
-              <p className="mt-1 text-center text-xs text-secondary">
-                Copyright &copy; {new Date().getFullYear()} NetEase Youdao. All Rights Reserved.
-              </p>
-            </div>
+            <SettingsSection title={i18nService.t('settingsAboutCopyright')}>
+              <SettingsField>
+                <p className="text-sm text-foreground">
+                {i18nService.getLanguage() === 'zh'
+                  ? BRAND.copyright.holderZh
+                  : BRAND.copyright.holderEn}
+                </p>
+                <p className="mt-1 text-xs text-secondary">
+                  Copyright &copy; {new Date().getFullYear()} {BRAND.nameEn}.
+                </p>
+              </SettingsField>
+            </SettingsSection>
           </div>
         );
 
@@ -5853,110 +5380,91 @@ const Settings: React.FC<SettingsProps> = ({
     }
   };
 
+  const isDetailView = settingsView === SettingsView.Detail && Boolean(activeSettingsModule);
+  const isSettingsSaveDisabled = isSaving || isAppearanceChanging || isPersonalizationLoading;
+
   return (
     <Modal
       onClose={guardedClose}
-      overlayClassName="fixed inset-0 z-50 modal-backdrop flex items-center justify-center p-3 sm:p-4"
-      className="w-[calc(100vw-1.5rem)] max-w-[900px] min-w-0 sm:w-[calc(100vw-2rem)]"
+      ariaLabel={i18nService.t('settingsCenterTitle')}
+      overlayClassName="non-draggable fixed inset-0 z-[60] bg-background"
+      className="non-draggable h-full w-full min-w-0"
     >
       <SkinPresentationScope
         enabled
         data-skin-settings="true"
-        className="relative flex h-[80vh] max-h-[calc(100vh-2rem)] w-full min-w-0 rounded-2xl border-border border shadow-modal overflow-hidden modal-content"
+        className="relative flex h-full w-full min-w-0 flex-col overflow-hidden bg-background text-foreground"
         onClick={handleSettingsClick}
       >
-        {/* Left sidebar */}
-        <div className="w-[220px] shrink-0 flex flex-col bg-surface-raised border-r border-border rounded-l-2xl overflow-y-auto">
-          <div className="px-5 pt-5 pb-3">
-            <h2 className="text-lg font-semibold text-foreground">{i18nService.t('settings')}</h2>
+        <SettingsCenterToolbar
+          isHome={!isDetailView}
+          query={settingsSearchQuery}
+          results={settingsSearchResults}
+          translate={i18nService.t.bind(i18nService)}
+          onBack={isDetailView ? handleReturnToSettingsHome : guardedClose}
+          onClose={guardedClose}
+          onQueryChange={setSettingsSearchQuery}
+          onResultSelect={handleOpenSettingsTab}
+          actions={isDetailView ? (
+            <SettingsActionBar
+              isSaving={isSaving}
+              disabled={isSettingsSaveDisabled}
+              translate={i18nService.t.bind(i18nService)}
+              onCancel={guardedClose}
+            />
+          ) : undefined}
+        />
+
+        {(noticeMessage || error) && (
+          <div className="z-10 mx-auto w-full max-w-[1120px] shrink-0 space-y-2 px-4 pt-3 sm:px-6">
+            {noticeMessage && (
+              <ErrorMessage message={noticeMessage} onClose={() => setNoticeMessage(null)} />
+            )}
+            {error && <ErrorMessage message={error} onClose={() => setError(null)} />}
           </div>
-          <nav className="flex flex-col gap-0.5 px-3 pb-4">
-            {sidebarTabs.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => handleTabChange(tab.key)}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left ${
-                  activeTab === tab.key
-                    ? 'bg-primary-muted text-primary'
-                    : 'text-secondary hover:text-foreground hover:bg-surface-raised'
-                }`}
-              >
-                <span className="shrink-0">{tab.icon}</span>
-                <span className="min-w-0 truncate">{tab.label}</span>
-              </button>
-            ))}
-          </nav>
-        </div>
+        )}
 
-        {/* Right content */}
-        <div className="relative flex-1 flex flex-col min-w-0 overflow-hidden bg-background rounded-r-2xl">
-          {/* Content header */}
-          <div className="flex justify-between items-center gap-3 px-6 pt-5 pb-3 shrink-0">
-            <h3 className="min-w-0 truncate text-lg font-semibold text-foreground">{activeTabLabel}</h3>
-            <button
-              onClick={guardedClose}
-              className="text-secondary hover:text-foreground p-1.5 hover:bg-surface-raised rounded-lg transition-colors"
-            >
-              <XMarkIcon className="h-5 w-5" />
-            </button>
+        {!isDetailView ? (
+          <div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}>
+            <SettingsHome
+              modules={visibleSettingsModules}
+              translate={i18nService.t.bind(i18nService)}
+              onOpenModule={handleOpenSettingsTab}
+            />
           </div>
-
-          {noticeMessage && (
-            <div className="px-6">
-              <ErrorMessage
-                message={noticeMessage}
-                onClose={() => setNoticeMessage(null)}
-              />
-            </div>
-          )}
-
-          {error && (
-            <div className="px-6">
-              <ErrorMessage
-                message={error}
-                onClose={() => setError(null)}
-              />
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
-            {/* Tab content */}
+        ) : activeSettingsModule && (
+          <form
+            id="settings-center-form"
+            onSubmit={handleSubmit}
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          >
+            <SettingsModuleHeader
+              module={activeSettingsModule}
+              activeTab={activeTab}
+              translate={i18nService.t.bind(i18nService)}
+              onBack={handleReturnToSettingsHome}
+              onTabChange={handleTabChange}
+            />
             <div
               ref={contentRef}
-              className="px-6 py-4 flex-1 overflow-y-auto"
+              id="settings-center-panel"
+              role="tabpanel"
+              aria-labelledby={`settings-module-tab-${activeTab}`}
+              className="min-h-0 flex-1 overflow-y-auto"
               style={{ scrollbarGutter: 'stable' }}
             >
-              {renderTabContent()}
-            </div>
-
-            {/* Footer buttons */}
-            <div className="relative shrink-0">
-              <div
-                aria-hidden="true"
-                className={`pointer-events-none absolute inset-x-0 bottom-full h-10 bg-gradient-to-t from-background to-transparent transition-opacity duration-200 ${
-                  footerFadeVisible ? 'opacity-100' : 'opacity-0'
-                }`}
-              />
-              <div className="flex justify-end space-x-4 px-6 pb-5 pt-3 bg-background">
-                <button
-                  type="button"
-                  onClick={guardedClose}
-                  className="px-4 py-2 rounded-xl transition-colors text-sm font-medium border border-border text-foreground hover:bg-surface-raised active:scale-[0.98]"
-                >
-                  {i18nService.t('cancel')}
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving || isAppearanceChanging}
-                  className="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-xl transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
-                >
-                  {isSaving ? i18nService.t('saving') : i18nService.t('save')}
-                </button>
+              <div className="mx-auto w-full max-w-[1120px] px-4 py-7 sm:px-6 sm:py-9">
+                {renderTabContent()}
               </div>
             </div>
+            <SettingsMobileActionBar
+              isSaving={isSaving}
+              disabled={isSettingsSaveDisabled}
+              translate={i18nService.t.bind(i18nService)}
+              onCancel={guardedClose}
+            />
           </form>
-
-        </div>
+        )}
 
         <ModelEditorDialog
           activeProvider={activeProvider}

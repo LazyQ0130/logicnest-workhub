@@ -77,4 +77,14 @@ describe('browser web access constants', () => {
       readability: false,
     });
   });
+
+  test('defaults to strict mode and safely migrates the legacy permissive mode', () => {
+    expect(normalizeBrowserWebAccessConfig(undefined).networkMode).toBe(BrowserNetworkMode.Strict);
+    expect(normalizeBrowserWebAccessConfig({
+      networkMode: BrowserNetworkMode.ProxyCompatible,
+    }).networkMode).toBe(BrowserNetworkMode.Strict);
+    expect(normalizeBrowserWebAccessConfig({
+      networkMode: BrowserNetworkMode.PrivateNetworkAccess,
+    }).networkMode).toBe(BrowserNetworkMode.PrivateNetworkAccess);
+  });
 });

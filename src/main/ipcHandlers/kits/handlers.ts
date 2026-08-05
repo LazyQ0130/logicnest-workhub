@@ -6,6 +6,7 @@ import http from 'http';
 import https from 'https';
 import path from 'path';
 
+import { BRAND } from '../../../shared/brand';
 import {
   ComputerUseKitBundle,
   ComputerUseKitBundleIntegrity,
@@ -216,6 +217,12 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
 
   // Fetch kit store catalog from overmind
   ipcMain.handle('kits:fetchStore', async () => {
+    if (!BRAND.features.remoteExpertKits) {
+      return {
+        success: true,
+        data: skinPackKitLifecycle.buildOfflineStoreResponse(getAdditionalBuiltInKits()),
+      };
+    }
     const url = getKitStoreUrl();
     console.log(`[KitStore] fetching from: ${url}`);
     try {
@@ -287,6 +294,9 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
       const skinPackInstallResult = await skinPackKitLifecycle.installIfHandled({ kitId, bundleUrl });
       if (skinPackInstallResult !== undefined) {
         return skinPackInstallResult;
+      }
+      if (!BRAND.features.remoteExpertKits && !isComputerUseKit) {
+        throw new Error('Remote expert kits are disabled in LogicNest WorkHub');
       }
 
       // 1. Download zip

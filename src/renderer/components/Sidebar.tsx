@@ -1,12 +1,27 @@
-import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import {
+  ChatBubbleLeftRightIcon,
+  ClockIcon,
+  ExclamationTriangleIcon,
+  HomeIcon,
+  UserGroupIcon,
+} from '@heroicons/react/24/outline';
 import { AgentId } from '@shared/agent';
+import type { LicenseState } from '@shared/license';
+import { MeetingRoomStatus } from '@shared/meetingRoom';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 
+import {
+  SIDEBAR_NAV_GROUPS,
+  SIDEBAR_WORKSPACE_DESTINATIONS,
+  SidebarDestination,
+  type SidebarDestination as SidebarDestinationType,
+} from '../config/brandUi';
 import { agentService } from '../services/agent';
 import { coworkService } from '../services/cowork';
 import { i18nService } from '../services/i18n';
 import { LogReporterAction, reportYdAnalyzer } from '../services/logReporter';
+import { meetingRoomService } from '../services/meetingRoom';
 import { RootState } from '../store';
 import {
   selectCoworkSessions,
@@ -23,26 +38,27 @@ import MyAgentSidebarTree from './agentSidebar/MyAgentSidebarTree';
 import Modal from './common/Modal';
 import { CoworkUiEvent } from './cowork/constants';
 import CoworkSearchModal from './cowork/CoworkSearchModal';
-import Cog6ToothIcon from './icons/Cog6ToothIcon';
 import ComposeIcon from './icons/ComposeIcon';
 import SidebarAutomationIcon from './icons/SidebarAutomationIcon';
 import SidebarKitsIcon from './icons/SidebarKitsIcon';
 import SidebarMcpIcon from './icons/SidebarMcpIcon';
 import SidebarSearchIcon from './icons/SidebarSearchIcon';
-import SidebarSitesIcon from './icons/SidebarSitesIcon';
 import SidebarToggleIcon from './icons/SidebarToggleIcon';
 import SkillIcon from './icons/SkillIcon';
 import TrashIcon from './icons/TrashIcon';
-import LoginButton from './LoginButton';
-import SidebarAdBanner from './SidebarAdBanner';
+import LicenseProfileMenu from './LicenseProfileMenu';
 
 interface SidebarProps {
   onShowSettings: () => void;
-  onShowLogin?: () => void;
-  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites';
+  licenseState: LicenseState;
+  onLicenseLogout: () => Promise<void>;
+  activeView: 'cowork' | 'skills' | 'meetingRooms' | 'scheduledTasks' | 'kits' | 'mcp' | 'sites';
+  activeDestination: SidebarDestinationType;
+  onDestinationChange: (destination: SidebarDestinationType) => void;
   onShowSkills: () => void;
   onShowCowork: () => void;
   onShowScheduledTasks: () => void;
+  onShowMeetingRooms: () => void;
   onShowKits: () => void;
   onShowMcp: () => void;
   onShowSites: () => void;
@@ -54,7 +70,6 @@ interface SidebarProps {
   /** The expanded update card owns the sidebar bottom; temporarily hide the
    * promo banner while preserving it for a smooth return after collapse. */
   hideAdBanner?: boolean;
-  hideLogin?: boolean;
   hideSites?: boolean;
 }
 
@@ -63,16 +78,25 @@ const MIN_SIDEBAR_WIDTH = 220;
 const MAX_SIDEBAR_WIDTH = 420;
 const SIDEBAR_COLLAPSE_TRANSITION_MS = 200;
 const normalizeAgentId = (agentId?: string | null) => agentId?.trim() || AgentId.Main;
-const SidebarNewFeatureBadge = {
-  KitsDismissedVersionKey: 'sidebar.kitsNewFeatureBadge.dismissedVersion',
-  // Bump this value in a release when the kits entry should show the badge again.
-  KitsVersion: '2026-06-05',
-} as const;
 const sidebarNavItemClassName =
-  'w-full inline-flex h-7 items-center gap-2 rounded-md px-1.5 text-left text-sm font-normal text-foreground transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]';
+  'w-full inline-flex h-8 items-center gap-2 rounded-lg px-2 text-left text-sm font-normal text-foreground transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]';
 const activeSidebarNavItemClassName =
-  `${sidebarNavItemClassName} bg-black/[0.06] font-medium hover:bg-black/[0.06] dark:bg-white/[0.07] dark:hover:bg-white/[0.07]`;
+  `${sidebarNavItemClassName} bg-black/[0.07] font-semibold hover:bg-black/[0.07] dark:bg-white/[0.09] dark:hover:bg-white/[0.09]`;
 const sidebarCreateIconClassName = 'h-4 w-4 shrink-0';
+
+const sidebarDestinationIcons: Record<
+  SidebarDestinationType,
+  React.ComponentType<{ className?: string }>
+> = {
+  [SidebarDestination.WorkHub]: HomeIcon,
+  [SidebarDestination.MeetingRooms]: ChatBubbleLeftRightIcon,
+  [SidebarDestination.TaskHistory]: ClockIcon,
+  [SidebarDestination.Automations]: SidebarAutomationIcon,
+  [SidebarDestination.Assistants]: UserGroupIcon,
+  [SidebarDestination.Capabilities]: SkillIcon,
+  [SidebarDestination.Solutions]: SidebarKitsIcon,
+  [SidebarDestination.Connections]: SidebarMcpIcon,
+};
 
 type SidebarAnalyticsSource = 'home_sidebar' | 'home_agent_sidebar';
 
@@ -132,21 +156,22 @@ const reportSidebarAction = (
 
 const Sidebar: React.FC<SidebarProps> = ({
   onShowSettings,
+  licenseState,
+  onLicenseLogout,
   activeView,
+  activeDestination,
+  onDestinationChange,
   onShowSkills,
   onShowCowork,
   onShowScheduledTasks,
+  onShowMeetingRooms,
   onShowKits,
   onShowMcp,
-  onShowSites,
   onNewChat,
   isCollapsed,
   onToggleCollapse,
   onWidthChange,
   updateNotice,
-  hideAdBanner,
-  hideLogin,
-  hideSites,
 }) => {
   const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
   const agents = useSelector((state: RootState) => state.agent.agents);
@@ -162,8 +187,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
   const [agentScrollEdges, setAgentScrollEdges] = useState({ top: false, bottom: false });
-  const [isSidebarBannerVisible, setIsSidebarBannerVisible] = useState(false);
-  const [showKitsNewBadge, setShowKitsNewBadge] = useState(false);
+  const [hasRunningMeeting, setHasRunningMeeting] = useState(false);
   const isResizingRef = useRef(false);
   const resizeStartXRef = useRef(0);
   const resizeStartWidthRef = useRef(DEFAULT_SIDEBAR_WIDTH);
@@ -202,42 +226,19 @@ const Sidebar: React.FC<SidebarProps> = ({
   }, [batchSelectableItemByKey, batchSelectableItems.length, batchSelectableKeySet, selectedKeys]);
 
   useEffect(() => {
-    let isCurrent = true;
-
-    const loadKitsNewBadgeState = async () => {
-      try {
-        const dismissedVersion = await window.electron.store.get(
-          SidebarNewFeatureBadge.KitsDismissedVersionKey,
-        );
-        if (!isCurrent) return;
-        setShowKitsNewBadge(dismissedVersion !== SidebarNewFeatureBadge.KitsVersion);
-      } catch (error) {
-        console.warn('[Sidebar] failed to load kits new feature badge state:', error);
-      }
+    const refresh = () => {
+      void meetingRoomService.list()
+        .then(rooms => setHasRunningMeeting(rooms.some(room => room.status === MeetingRoomStatus.Running)))
+        .catch(() => undefined);
     };
-
-    void loadKitsNewBadgeState();
-
-    return () => {
-      isCurrent = false;
-    };
+    refresh();
+    const unsubscribe = meetingRoomService.onChanged(refresh);
+    return unsubscribe;
   }, []);
-
-  const dismissKitsNewBadge = useCallback(() => {
-    if (!showKitsNewBadge) return;
-    setShowKitsNewBadge(false);
-    void window.electron.store
-      .set(
-        SidebarNewFeatureBadge.KitsDismissedVersionKey,
-        SidebarNewFeatureBadge.KitsVersion,
-      )
-      .catch((error) => {
-        console.warn('[Sidebar] failed to save kits new feature badge state:', error);
-      });
-  }, [showKitsNewBadge]);
 
   useEffect(() => {
     const handleSearch = () => {
+      onDestinationChange(SidebarDestination.TaskHistory);
       onShowCowork();
       setIsSearchOpen(true);
     };
@@ -245,7 +246,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     return () => {
       window.removeEventListener(CoworkUiEvent.ShortcutSearch, handleSearch);
     };
-  }, [onShowCowork]);
+  }, [onDestinationChange, onShowCowork]);
 
   useEffect(() => {
     if (!isCollapsed) return;
@@ -258,6 +259,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   }, [isCollapsed]);
 
   const handleSelectSession = async (session: CoworkSessionSummary) => {
+    onDestinationChange(SidebarDestination.TaskHistory);
     const agentId = session.agentId?.trim() || AgentId.Main;
     try {
       if (agentId !== currentAgentId) {
@@ -270,6 +272,41 @@ const Sidebar: React.FC<SidebarProps> = ({
       coworkService.finishSessionNavigation(session.id);
     }
   };
+
+  const handleSidebarDestination = useCallback((destination: SidebarDestinationType) => {
+    setIsSearchOpen(false);
+    onDestinationChange(destination);
+    switch (destination) {
+      case SidebarDestination.WorkHub:
+        onNewChat();
+        break;
+      case SidebarDestination.TaskHistory:
+        onShowCowork();
+        break;
+      case SidebarDestination.Automations:
+        onShowScheduledTasks();
+        break;
+      case SidebarDestination.MeetingRooms:
+        onShowMeetingRooms();
+        break;
+      case SidebarDestination.Assistants:
+        onShowCowork();
+        break;
+      case SidebarDestination.Capabilities:
+        onShowSkills();
+        break;
+      case SidebarDestination.Solutions:
+        onShowKits();
+        break;
+      case SidebarDestination.Connections:
+        onShowMcp();
+        break;
+    }
+  }, [onDestinationChange, onNewChat, onShowCowork, onShowKits, onShowMcp, onShowMeetingRooms, onShowScheduledTasks, onShowSkills]);
+
+  const isDestinationActive = useCallback((destination: SidebarDestinationType): boolean => {
+    return activeDestination === destination;
+  }, [activeDestination]);
 
   const handleEnterBatchMode = useCallback((sessionId: string, agentId: string) => {
     reportSidebarAction('batch_mode_enter', {
@@ -527,7 +564,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           transitionDuration: `${SIDEBAR_COLLAPSE_TRANSITION_MS}ms`,
         }}
       >
-      <div className="pt-3 pb-3">
+      <div className="scrollbar-hidden min-h-0 max-h-[65%] shrink overflow-y-auto pb-3 pt-3">
         {showHeaderRow && (
           <div className="draggable sidebar-header-drag h-8 flex items-center justify-end px-3">
             {!isWindows && (
@@ -547,9 +584,10 @@ const Sidebar: React.FC<SidebarProps> = ({
             type="button"
             onClick={() => {
               reportSidebarAction('new_task', { activeView, isCollapsed });
+              onDestinationChange(SidebarDestination.WorkHub);
               onNewChat();
             }}
-            className={sidebarNavItemClassName}
+            className={`${sidebarNavItemClassName} h-9 border border-border/70 bg-surface font-medium shadow-sm`}
           >
             <ComposeIcon className={sidebarCreateIconClassName} />
             {i18nService.t('newChat')}
@@ -558,6 +596,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             type="button"
             onClick={() => {
               reportSidebarAction('open_search', { activeView, isCollapsed });
+              onDestinationChange(SidebarDestination.TaskHistory);
               onShowCowork();
               setIsSearchOpen(true);
             }}
@@ -566,122 +605,121 @@ const Sidebar: React.FC<SidebarProps> = ({
             <SidebarSearchIcon className="h-4 w-4 shrink-0" />
             {i18nService.t('search')}
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              reportSidebarAction('open_scheduled_tasks', { activeView, isCollapsed });
-              setIsSearchOpen(false);
-              onShowScheduledTasks();
-            }}
-            className={activeView === 'scheduledTasks' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
-            aria-current={activeView === 'scheduledTasks' ? 'page' : undefined}
-          >
-            <SidebarAutomationIcon className="h-4 w-4 shrink-0" />
-            {i18nService.t('scheduledTasks')}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              reportSidebarAction('open_kits', { activeView, isCollapsed });
-              setIsSearchOpen(false);
-              dismissKitsNewBadge();
-              onShowKits();
-            }}
-            className={activeView === 'kits' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
-            aria-current={activeView === 'kits' ? 'page' : undefined}
-          >
-            <SidebarKitsIcon className="h-4 w-4 shrink-0" />
-            <span className="min-w-0 truncate">{i18nService.t('kits')}</span>
-            {showKitsNewBadge && (
-              <span className="inline-flex h-4 shrink-0 items-center rounded-[4px] bg-[#ff4f6d] px-1.5 text-[10px] font-semibold leading-none text-white">
-                {i18nService.t('newFeatureBadge')}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              reportSidebarAction('open_skills', { activeView, isCollapsed });
-              setIsSearchOpen(false);
-              onShowSkills();
-            }}
-            className={activeView === 'skills' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
-            aria-current={activeView === 'skills' ? 'page' : undefined}
-          >
-            <SkillIcon className="h-4 w-4 shrink-0" />
-            {i18nService.t('skills')}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              reportSidebarAction('open_mcp', { activeView, isCollapsed });
-              setIsSearchOpen(false);
-              onShowMcp();
-            }}
-            className={activeView === 'mcp' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
-            aria-current={activeView === 'mcp' ? 'page' : undefined}
-          >
-            <SidebarMcpIcon className="h-4 w-4 shrink-0" />
-            {i18nService.t('mcpServers')}
-          </button>
-          {!hideSites && (
-            <button
-              type="button"
-              onClick={() => {
-                reportSidebarAction('open_sites', { activeView, isCollapsed });
-                setIsSearchOpen(false);
-                onShowSites();
-              }}
-              className={activeView === 'sites' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
-              aria-current={activeView === 'sites' ? 'page' : undefined}
-            >
-              <SidebarSitesIcon className="h-4 w-4 shrink-0" />
-              {i18nService.t('sitesTitle')}
-            </button>
-          )}
         </div>
+        <nav className="mt-4 space-y-4 px-3" aria-label={i18nService.t('brandPrimaryNavigation')}>
+          {SIDEBAR_NAV_GROUPS.map((group) => (
+            <section key={group.id} aria-labelledby={`sidebar-group-${group.id}`}>
+              <h2
+                id={`sidebar-group-${group.id}`}
+                className="mb-1 px-2 text-[11px] font-medium uppercase tracking-[0.12em] text-secondary/65"
+              >
+                {i18nService.t(group.labelKey)}
+              </h2>
+              <div className="space-y-0.5">
+                {group.items.map((item) => {
+                  const Icon = sidebarDestinationIcons[item.destination];
+                  const isActive = isDestinationActive(item.destination);
+                  return (
+                    <button
+                      key={item.destination}
+                      type="button"
+                      onClick={() => {
+                        reportSidebarAction(`open_${item.destination}`, { activeView, isCollapsed });
+                        handleSidebarDestination(item.destination);
+                      }}
+                      className={isActive ? activeSidebarNavItemClassName : sidebarNavItemClassName}
+                      aria-current={isActive ? 'page' : undefined}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      <span className="min-w-0 truncate">{i18nService.t(item.labelKey)}</span>
+                      {item.destination === SidebarDestination.MeetingRooms && hasRunningMeeting && (
+                        <span
+                          className="ml-auto h-2 w-2 rounded-full bg-emerald-500"
+                          title={i18nService.t('meetingRunningIndicator')}
+                        />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </nav>
       </div>
-      <div className="relative min-h-0 flex-1">
+      <div className="relative min-h-0 flex-1 border-t border-border/50 pt-2">
+        <div
+          className="mx-3 mb-2 grid grid-cols-2 rounded-lg bg-black/[0.035] p-1 dark:bg-white/[0.055]"
+          role="tablist"
+          aria-label={i18nService.t('brandWorkspaceNavigation')}
+        >
+          {SIDEBAR_WORKSPACE_DESTINATIONS.map((item) => {
+            const isActive = isDestinationActive(item.destination);
+            return (
+              <button
+                key={item.destination}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => handleSidebarDestination(item.destination)}
+                className={`rounded-md px-2 py-1.5 text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+                  isActive
+                    ? 'bg-surface text-foreground shadow-sm'
+                    : 'text-secondary hover:text-foreground'
+                }`}
+              >
+                {i18nService.t(item.labelKey)}
+              </button>
+            );
+          })}
+        </div>
         <div
           ref={agentScrollContainerRef}
-          className={`scrollbar-hidden h-full overflow-y-auto px-2.5 ${
-            isSidebarBannerVisible && !isBatchMode ? 'pb-[104px]' : 'pb-10'
-          }`}
+          className="scrollbar-hidden h-[calc(100%_-_44px)] overflow-y-auto px-2.5 pb-10"
           onScroll={handleAgentScroll}
         >
-          <MyAgentSidebarTree
-            isBatchMode={isBatchMode}
-            batchAgentId={batchAgentId}
-            deletedSessionIds={deletedSessionIds}
-            selectedKeys={selectedKeys}
-            onShowCowork={onShowCowork}
-            onTaskSelected={(params) => {
-              console.debug('[Sidebar] reporting agent sidebar task selection analytics');
-              void reportYdAnalyzer({
-                action: LogReporterAction.SidebarAction,
-                source: 'home_agent_sidebar',
-                actionType: 'select_task',
-                activeView,
-                ...params,
-              });
-            }}
-            onSidebarAction={(actionType, params) => {
-              reportSidebarAction(actionType, {
-                source: 'home_agent_sidebar',
-                ...params,
-              });
-            }}
-            onToggleSelection={handleToggleSelection}
-            onEnterBatchMode={handleEnterBatchMode}
-            onBatchSelectableItemsChange={handleBatchSelectableItemsChange}
-          />
+          {activeDestination === SidebarDestination.TaskHistory
+            || activeDestination === SidebarDestination.Assistants ? (
+              <MyAgentSidebarTree
+                displayMode={activeDestination === SidebarDestination.TaskHistory ? 'tasks' : 'assistants'}
+                isBatchMode={isBatchMode}
+                batchAgentId={batchAgentId}
+                deletedSessionIds={deletedSessionIds}
+                selectedKeys={selectedKeys}
+                onShowCowork={onShowCowork}
+                onTaskSelected={(params) => {
+                  onDestinationChange(SidebarDestination.TaskHistory);
+                  console.debug('[Sidebar] reporting agent sidebar task selection analytics');
+                  void reportYdAnalyzer({
+                    action: LogReporterAction.SidebarAction,
+                    source: 'home_agent_sidebar',
+                    actionType: 'select_task',
+                    activeView,
+                    ...params,
+                  });
+                }}
+                onAgentSelected={(params) => {
+                  onDestinationChange(SidebarDestination.Assistants);
+                  reportSidebarAction('select_agent', {
+                    source: 'home_agent_sidebar',
+                    ...params,
+                  });
+                }}
+                onSidebarAction={(actionType, params) => {
+                  reportSidebarAction(actionType, {
+                    source: 'home_agent_sidebar',
+                    ...params,
+                  });
+                }}
+                onToggleSelection={handleToggleSelection}
+                onEnterBatchMode={handleEnterBatchMode}
+                onBatchSelectableItemsChange={handleBatchSelectableItemsChange}
+              />
+            ) : (
+              <p className="px-3 py-6 text-center text-xs text-secondary">
+                {i18nService.t('brandWorkspaceHint')}
+              </p>
+            )}
         </div>
-        {!isBatchMode && (
-          <SidebarAdBanner
-            hidden={hideAdBanner}
-            onVisibleChange={setIsSidebarBannerVisible}
-          />
-        )}
         <div
           className={`pointer-events-none absolute inset-x-0 top-0 z-10 h-24 bg-gradient-to-b from-surface-raised to-transparent transition-opacity duration-150 ${
             agentScrollEdges.top ? 'opacity-100' : 'opacity-0'
@@ -754,21 +792,12 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
       ) : (
         <div className="pb-2 pt-2">
-          <div className="flex items-center gap-1 pl-3 pr-2 pt-1">
-            {!hideLogin && (
-              <div className="flex-1 min-w-0">
-                <LoginButton contentLeftOffset={isCollapsed ? 0 : sidebarWidth} />
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => onShowSettings()}
-              className={`inline-flex h-7 items-center justify-start gap-1.5 rounded-md px-1.5 text-sm font-normal text-foreground transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04] ${hideLogin ? 'w-full' : 'shrink-0'}`}
-              aria-label={i18nService.t('settings')}
-            >
-              <Cog6ToothIcon className="h-4 w-4 shrink-0" />
-              {i18nService.t('settings')}
-            </button>
+          <div className="px-3 pt-1">
+            <LicenseProfileMenu
+              licenseState={licenseState}
+              onShowSettings={onShowSettings}
+              onLogout={onLicenseLogout}
+            />
           </div>
         </div>
       )}

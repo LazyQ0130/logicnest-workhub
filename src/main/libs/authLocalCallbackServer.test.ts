@@ -114,7 +114,7 @@ describe('startAuthLocalCallback', () => {
     expect(codes).toEqual(['abc123']);
   });
 
-  test('returns a success page that redirects back to the portal when return_to is safe', async () => {
+  test('does not redirect to a removed upstream portal', async () => {
     const callback = await startAuthLocalCallback({ onCode: () => {} });
     const returnTo = encodeURIComponent(
       'https://lobsterai.youdao.com/portal#/login?source=electron&electronLogin=success',
@@ -126,8 +126,8 @@ describe('startAuthLocalCallback', () => {
     const body = await response.text();
 
     expect(response.status).toBe(200);
-    expect(body).toContain('window.location.replace');
-    expect(body).toContain('electronLogin=success');
+    expect(body).not.toContain('window.location.replace');
+    expect(body).not.toContain('electronLogin=success');
   });
 
   test('allows loopback return_to URLs for local portal development', async () => {

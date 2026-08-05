@@ -14,11 +14,21 @@ export const BrowserRuntimeProfile = {
 export type BrowserRuntimeProfile = typeof BrowserRuntimeProfile[keyof typeof BrowserRuntimeProfile];
 
 export const BrowserNetworkMode = {
+  /** Legacy value. Normalization migrates it to Strict. */
   ProxyCompatible: 'proxy-compatible',
   Strict: 'strict',
+  PrivateNetworkAccess: 'private-network-access',
 } as const;
 
 export type BrowserNetworkMode = typeof BrowserNetworkMode[keyof typeof BrowserNetworkMode];
+
+export const BrowserLoopbackHostname = {
+  Localhost: 'localhost',
+  Ipv4: '127.0.0.1',
+  Ipv6: '::1',
+} as const;
+
+export const BROWSER_LOOPBACK_HOSTNAMES = Object.values(BrowserLoopbackHostname);
 
 export const BrowserSnapshotMode = {
   Default: 'default',
@@ -100,7 +110,7 @@ export interface BrowserDiagnosticResult {
 export const defaultBrowserWebAccessConfig: BrowserWebAccessConfig = {
   browserEnabled: true,
   profileMode: BrowserProfileMode.Managed,
-  networkMode: BrowserNetworkMode.ProxyCompatible,
+  networkMode: BrowserNetworkMode.Strict,
   followGlobalProxy: true,
   allowedHostnames: [],
   blockedHostnames: [],
@@ -329,9 +339,12 @@ export const normalizeBrowserWebAccessConfig = (
   const profileMode = Object.values(BrowserProfileMode).includes(value?.profileMode as BrowserProfileMode)
     ? value?.profileMode as BrowserProfileMode
     : defaultBrowserWebAccessConfig.profileMode;
-  const networkMode = Object.values(BrowserNetworkMode).includes(value?.networkMode as BrowserNetworkMode)
+  const requestedNetworkMode = Object.values(BrowserNetworkMode).includes(value?.networkMode as BrowserNetworkMode)
     ? value?.networkMode as BrowserNetworkMode
     : defaultBrowserWebAccessConfig.networkMode;
+  const networkMode = requestedNetworkMode === BrowserNetworkMode.ProxyCompatible
+    ? BrowserNetworkMode.Strict
+    : requestedNetworkMode;
   const snapshotMode = Object.values(BrowserSnapshotMode).includes(value?.snapshotMode as BrowserSnapshotMode)
     ? value?.snapshotMode as BrowserSnapshotMode
     : defaultBrowserWebAccessConfig.snapshotMode;

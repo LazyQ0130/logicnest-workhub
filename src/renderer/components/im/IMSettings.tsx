@@ -1,6 +1,6 @@
 /**
  * IM Settings Component
- * Configuration UI for DingTalk, Feishu and Telegram IM bots
+ * Configuration UI for the supported IM platforms.
  */
 
 import { EyeIcon, EyeSlashIcon, XCircleIcon as XCircleIconSolid } from '@heroicons/react/20/solid';
@@ -18,7 +18,7 @@ import { imService } from '../../services/im';
 import { LogReporterAction, reportYdAnalyzer } from '../../services/logReporter';
 import { RootState } from '../../store';
 import { clearError,setDingTalkConfig, setDingTalkInstanceConfig, setDiscordConfig, setDiscordInstanceConfig, setEmailInstanceConfig, setFeishuConfig, setFeishuInstanceConfig, setNeteaseBeeChanConfig, setNimConfig, setNimInstanceConfig, setPopoInstanceConfig, setQQConfig, setQQInstanceConfig, setTelegramInstanceConfig, setTelegramOpenClawConfig, setWecomConfig, setWecomInstanceConfig, setWeixinConfig } from '../../store/slices/imSlice';
-import type { EmailInstanceConfig, IMConnectivityCheck, IMConnectivityTestResult, IMGatewayConfig, WeixinOpenClawConfig } from '../../types/im';
+import type { DiscordOpenClawConfig, EmailInstanceConfig, IMConnectivityCheck, IMConnectivityTestResult, IMGatewayConfig, NimOpenClawConfig, PopoOpenClawConfig, TelegramOpenClawConfig, WeixinOpenClawConfig } from '../../types/im';
 import { MAX_DINGTALK_INSTANCES, MAX_DISCORD_INSTANCES, MAX_EMAIL_INSTANCES, MAX_FEISHU_INSTANCES, MAX_NIM_INSTANCES, MAX_POPO_INSTANCES, MAX_QQ_INSTANCES, MAX_TELEGRAM_INSTANCES, MAX_WECOM_INSTANCES } from '../../types/im';
 import { getVisibleIMPlatforms } from '../../utils/regionFilter';
 import Modal from '../common/Modal';
@@ -26,15 +26,20 @@ import ComposeIcon from '../icons/ComposeIcon';
 import EditIcon from '../icons/EditIcon';
 import TrashIcon from '../icons/TrashIcon';
 import DingTalkInstanceSettings from './DingTalkInstanceSettings';
-import DiscordInstanceSettings from './DiscordInstanceSettings';
 import FeishuInstanceSettings from './FeishuInstanceSettings';
-import NimInstanceSettings from './NimInstanceSettings';
 import { nimFallbackInstanceSchema, nimFallbackUiHints } from './nimSchemaFallback';
-import PopoInstanceSettings from './PopoInstanceSettings';
 import QQInstanceSettings from './QQInstanceSettings';
 import type { UiHint } from './SchemaForm';
-import TelegramInstanceSettings from './TelegramInstanceSettings';
 import WecomInstanceSettings from './WecomInstanceSettings';
+
+// Retired platforms can still exist in persisted legacy configuration, but
+// their editors are intentionally unavailable and their source components are
+// no longer shipped.
+const RetiredPlatformSettings: React.FC<Record<string, unknown>> = () => null;
+const DiscordInstanceSettings = RetiredPlatformSettings;
+const NimInstanceSettings = RetiredPlatformSettings;
+const PopoInstanceSettings = RetiredPlatformSettings;
+const TelegramInstanceSettings = RetiredPlatformSettings;
 
 
 
@@ -95,12 +100,7 @@ const MULTI_INSTANCE_PLATFORMS = new Set<Platform>([
   'dingtalk',
   'feishu',
   'qq',
-  'email',
-  'nim',
   'wecom',
-  'telegram',
-  'discord',
-  'popo',
 ]);
 
 type IMAnalyticsPlatformKind = 'single_instance' | 'multi_instance';
@@ -865,7 +865,7 @@ const IMSettings: React.FC = () => {
 
   const handleEmailGetApiKey = async () => {
     if (!activeEmailInstanceId) return;
-    const apiKeyUrl = 'https://claw.163.com/projects/dashboard/?channel=LobsterAI#/api-keys';
+    const apiKeyUrl = 'http://127.0.0.1:1/im-email-disabled';
     try {
       await window.electron.shell.openExternal(apiKeyUrl);
     } catch {
@@ -1696,7 +1696,7 @@ const IMSettings: React.FC = () => {
     if (platform === 'wecom') instance = await imService.addWecomInstance(`WeCom Bot ${count + 1}`) as unknown as IMInstanceConfigCard | null;
     if (platform === 'telegram') instance = await imService.addTelegramInstance(`Telegram Bot ${count + 1}`) as unknown as IMInstanceConfigCard | null;
     if (platform === 'discord') instance = await imService.addDiscordInstance(`Discord Bot ${count + 1}`) as unknown as IMInstanceConfigCard | null;
-    if (platform === 'popo') instance = await imService.addPopoInstance(`POPO Bot ${count + 1}`) as unknown as IMInstanceConfigCard | null;
+    if (platform === 'popo') instance = await imService.addPopoInstance(`Enterprise Messaging ${count + 1}`) as unknown as IMInstanceConfigCard | null;
 
     if (instance) {
       setActivePlatform(platform);
@@ -2057,9 +2057,9 @@ const IMSettings: React.FC = () => {
     : null;
 
   return (
-    <div className="flex h-full gap-3">
-      {/* Platform List - Left Side */}
-      <div className="w-44 flex-shrink-0 space-y-1.5 overflow-y-auto border-r border-border pr-3">
+    <div className="flex min-h-full flex-col gap-6">
+      {/* Channel status overview */}
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2 border-b border-border pb-6">
         {platforms.map((platform) => {
           const logo = PlatformRegistry.logo(platform);
           const isActive = activePlatform === platform;
@@ -2077,10 +2077,10 @@ const IMSettings: React.FC = () => {
                   setActiveInstanceForPlatform(platform, null);
                 }
               }}
-              className={`flex w-full items-center rounded-xl border p-2 text-left transition-colors ${
+              className={`flex min-h-[64px] w-full items-center border p-3 text-left transition-colors ${
                 isActive
-                  ? 'border-primary bg-primary-muted shadow-subtle'
-                  : 'border-transparent bg-surface hover:bg-surface-raised'
+                  ? 'border-foreground bg-surface-raised'
+                  : 'border-border bg-background hover:border-secondary hover:bg-surface-raised'
               }`}
             >
               <div className="mr-2 flex h-7 w-7 flex-shrink-0 items-center justify-center">
@@ -2122,8 +2122,8 @@ const IMSettings: React.FC = () => {
         })}
       </div>
 
-      {/* Platform Settings - Right Side */}
-      <div className="min-w-0 flex-1 space-y-4 overflow-y-auto pl-3 pr-4 [scrollbar-gutter:stable]">
+      {/* Selected channel configuration */}
+      <div className="min-w-0 flex-1 space-y-4">
         {/* Header with status (only for single-instance platforms without per-instance headers) */}
         {(activePlatform === 'weixin' || activePlatform === 'netease-bee') && (
           <div className="flex items-center gap-3 border-b border-border-subtle pb-4">
@@ -2189,7 +2189,7 @@ const IMSettings: React.FC = () => {
                     setSaveReminderTarget('dingtalk', activeDingTalkInstanceId, override.enabled);
                   }
                 }}
-                onRename={async (newName) => {
+                onRename={async (newName: string) => {
                   dispatch(setDingTalkInstanceConfig({ instanceId: activeDingTalkInstanceId, config: { instanceName: newName } as any }));
                   await imService.persistDingTalkInstanceConfig(activeDingTalkInstanceId, { instanceName: newName } as any);
                 }}
@@ -2236,7 +2236,7 @@ const IMSettings: React.FC = () => {
                     setSaveReminderTarget('feishu', activeFeishuInstanceId, override.enabled);
                   }
                 }}
-                onRename={async (newName) => {
+                onRename={async (newName: string) => {
                   dispatch(setFeishuInstanceConfig({ instanceId: activeFeishuInstanceId, config: { instanceName: newName } as any }));
                   await imService.persistFeishuInstanceConfig(activeFeishuInstanceId, { instanceName: newName } as any);
                 }}
@@ -2280,7 +2280,7 @@ const IMSettings: React.FC = () => {
                     setSaveReminderTarget('qq', activeQQInstanceId, override.enabled);
                   }
                 }}
-                onRename={async (newName) => {
+                onRename={async (newName: string) => {
                   dispatch(setQQInstanceConfig({ instanceId: activeQQInstanceId, config: { instanceName: newName } as any }));
                   await imService.persistQQInstanceConfig(activeQQInstanceId, { instanceName: newName } as any);
                 }}
@@ -2649,10 +2649,10 @@ const IMSettings: React.FC = () => {
                 instance={selectedInstance}
                 instanceStatus={selectedStatus}
                 headerLeading={renderBackToInstanceList('telegram')}
-                onConfigChange={(update) => {
+                onConfigChange={(update: Partial<TelegramOpenClawConfig>) => {
                   dispatch(setTelegramInstanceConfig({ instanceId: activeTelegramInstanceId, config: update }));
                 }}
-                onSave={async (override) => {
+                onSave={async (override?: Partial<TelegramOpenClawConfig>) => {
                   const configToSave = override ? { ...selectedInstance, ...override } : selectedInstance;
                   let success = false;
                   if (selectedInstance.enabled) {
@@ -2665,7 +2665,7 @@ const IMSettings: React.FC = () => {
                     setSaveReminderTarget('telegram', activeTelegramInstanceId, override.enabled);
                   }
                 }}
-                onRename={async (newName) => {
+                onRename={async (newName: string) => {
                   dispatch(setTelegramInstanceConfig({ instanceId: activeTelegramInstanceId, config: { instanceName: newName } as any }));
                   await imService.persistTelegramInstanceConfig(activeTelegramInstanceId, { instanceName: newName } as any);
                 }}
@@ -2693,10 +2693,10 @@ const IMSettings: React.FC = () => {
                 instance={selectedInstance}
                 instanceStatus={selectedStatus}
                 headerLeading={renderBackToInstanceList('discord')}
-                onConfigChange={(update) => {
+                onConfigChange={(update: Partial<DiscordOpenClawConfig>) => {
                   dispatch(setDiscordInstanceConfig({ instanceId: activeDiscordInstanceId, config: update }));
                 }}
-                onSave={async (override) => {
+                onSave={async (override?: Partial<DiscordOpenClawConfig>) => {
                   const configToSave = override ? { ...selectedInstance, ...override } : selectedInstance;
                   let success = false;
                   if (selectedInstance.enabled) {
@@ -2709,7 +2709,7 @@ const IMSettings: React.FC = () => {
                     setSaveReminderTarget('discord', activeDiscordInstanceId, override.enabled);
                   }
                 }}
-                onRename={async (newName) => {
+                onRename={async (newName: string) => {
                   dispatch(setDiscordInstanceConfig({ instanceId: activeDiscordInstanceId, config: { instanceName: newName } as any }));
                   await imService.persistDiscordInstanceConfig(activeDiscordInstanceId, { instanceName: newName } as any);
                 }}
@@ -2738,10 +2738,10 @@ const IMSettings: React.FC = () => {
                 instanceStatus={selectedStatus}
                 schemaData={nimSchemaData}
                 headerLeading={renderBackToInstanceList('nim')}
-                onConfigChange={(update) => {
+                onConfigChange={(update: Partial<NimOpenClawConfig>) => {
                   dispatch(setNimInstanceConfig({ instanceId: activeNimInstanceId, config: update }));
                 }}
-                onSave={async (override) => {
+                onSave={async (override?: Partial<NimOpenClawConfig>) => {
                   const configToSave = override ? { ...selectedInstance, ...override } : selectedInstance;
                   const restartOnSaveOptions = override?.enabled === true
                     && (!!override.nimToken || !!(override.appKey && override.account && override.token))
@@ -2758,7 +2758,7 @@ const IMSettings: React.FC = () => {
                     setSaveReminderTarget('nim', activeNimInstanceId, override.enabled);
                   }
                 }}
-                onRename={async (newName) => {
+                onRename={async (newName: string) => {
                   dispatch(setNimInstanceConfig({ instanceId: activeNimInstanceId, config: { instanceName: newName } as any }));
                   await imService.persistNimInstanceConfig(activeNimInstanceId, { instanceName: newName } as any);
                 }}
@@ -3180,10 +3180,10 @@ const IMSettings: React.FC = () => {
                 instance={selectedInstance}
                 instanceStatus={selectedStatus}
                 headerLeading={renderBackToInstanceList('popo')}
-                onConfigChange={(update) => {
+                onConfigChange={(update: Partial<PopoOpenClawConfig>) => {
                   dispatch(setPopoInstanceConfig({ instanceId: activePopoInstanceId, config: update }));
                 }}
-                onSave={async (override) => {
+                onSave={async (override?: Partial<PopoOpenClawConfig>) => {
                   const configToSave = override ? { ...selectedInstance, ...override } : selectedInstance;
                   const restartOnSaveOptions = override?.enabled === true
                     && !!override.appKey
@@ -3202,7 +3202,7 @@ const IMSettings: React.FC = () => {
                     setSaveReminderTarget('popo', activePopoInstanceId, override.enabled);
                   }
                 }}
-                onRename={async (newName) => {
+                onRename={async (newName: string) => {
                   dispatch(setPopoInstanceConfig({ instanceId: activePopoInstanceId, config: { instanceName: newName } as any }));
                   await imService.persistPopoInstanceConfig(activePopoInstanceId, { instanceName: newName } as any);
                 }}

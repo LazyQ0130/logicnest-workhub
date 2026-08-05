@@ -2,8 +2,8 @@ import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
 
+import { PlatformRegistry } from '../../shared/platform';
 import type { IMStore } from '../im/imStore';
-import type { PopoInstanceConfig } from '../im/types';
 import type { SqliteStore } from '../sqliteStore';
 
 export type EnterpriseUIAction = 'hide' | 'disable' | 'readonly';
@@ -51,7 +51,7 @@ const SANDBOX_MODE_MAP: Record<string, string> = {
 
 const ENTERPRISE_CONFIG_DIR = 'enterprise-config';
 const MANIFEST_FILE = 'manifest.json';
-const ACCOUNT_COMPAT_CHANNEL_KEYS = ['feishu', 'dingtalk', 'dingtalk-connector', 'qqbot', 'wecom', 'moltbot-popo'] as const;
+const ACCOUNT_COMPAT_CHANNEL_KEYS = ['feishu', 'dingtalk', 'dingtalk-connector', 'qqbot', 'wecom'] as const;
 type AccountCompatChannelKey = typeof ACCOUNT_COMPAT_CHANNEL_KEYS[number];
 
 const ACCOUNT_COMPAT_CHANNEL_TOP_LEVEL_MAP: Record<AccountCompatChannelKey, Record<string, string>> = {
@@ -123,23 +123,6 @@ const ACCOUNT_COMPAT_CHANNEL_TOP_LEVEL_MAP: Record<AccountCompatChannelKey, Reco
     groupAllowFrom: 'groupAllowFrom',
     sendThinkingMessage: 'sendThinkingMessage',
   },
-  'moltbot-popo': {
-    enabled: 'enabled',
-    connectionMode: 'connectionMode',
-    appKey: 'appKey',
-    appSecret: 'appSecret',
-    token: 'token',
-    aesKey: 'aesKey',
-    webhookBaseUrl: 'webhookBaseUrl',
-    webhookPath: 'webhookPath',
-    webhookPort: 'webhookPort',
-    dmPolicy: 'dmPolicy',
-    allowFrom: 'allowFrom',
-    groupPolicy: 'groupPolicy',
-    groupAllowFrom: 'groupAllowFrom',
-    textChunkLimit: 'textChunkLimit',
-    richTextChunkLimit: 'richTextChunkLimit',
-  },
 };
 
 const ACCOUNT_COMPAT_CHANNEL_TOP_LEVEL_CREDENTIAL_KEYS: Record<AccountCompatChannelKey, string[]> = {
@@ -148,7 +131,6 @@ const ACCOUNT_COMPAT_CHANNEL_TOP_LEVEL_CREDENTIAL_KEYS: Record<AccountCompatChan
   'dingtalk-connector': ['clientId', 'clientSecret'],
   qqbot: ['appId', 'appSecret', 'clientSecret', 'clientSecretFile'],
   wecom: ['botId', 'secret'],
-  'moltbot-popo': ['appKey', 'appSecret', 'token', 'aesKey'],
 };
 
 const ACCOUNT_COMPAT_CHANNEL_ACCOUNT_CREDENTIAL_KEYS: Record<AccountCompatChannelKey, string[]> = {
@@ -157,7 +139,6 @@ const ACCOUNT_COMPAT_CHANNEL_ACCOUNT_CREDENTIAL_KEYS: Record<AccountCompatChanne
   'dingtalk-connector': ['clientId', 'clientSecret'],
   qqbot: ['appId', 'clientSecret', 'appSecret', 'clientSecretFile'],
   wecom: ['botId', 'secret'],
-  'moltbot-popo': ['appKey', 'appSecret', 'token', 'aesKey'],
 };
 
 function resolveMergeMode(value: boolean | 'merge' | 'overwrite' | undefined): 'merge' | 'overwrite' | null {
@@ -522,20 +503,6 @@ function syncIMChannels(configPath: string, imStore: IMStore): void {
     // For multi-instance platforms (feishu, dingtalk, qq, wecom), update existing
     // instances when present so enterprise config changes propagate correctly.
     const PLATFORM_SETTERS: Record<string, (cfg: any) => void> = {
-      'telegram': (cfg) => {
-        if (cfg && Array.isArray(cfg.instances)) {
-          imStore.setTelegramMultiInstanceConfig(cfg);
-          return;
-        }
-        imStore.setTelegramOpenClawConfig(cfg);
-      },
-      'discord': (cfg) => {
-        if (cfg && Array.isArray(cfg.instances)) {
-          imStore.setDiscordMultiInstanceConfig(cfg);
-          return;
-        }
-        imStore.setDiscordOpenClawConfig(cfg);
-      },
       'feishu': (cfg) => {
         const instances = imStore.getFeishuInstances();
         if (syncAccountConfigs(
@@ -697,40 +664,7 @@ function syncIMChannels(configPath: string, imStore: IMStore): void {
           imStore.setWecomConfig(cfg);
         }
       },
-      'moltbot-popo': (cfg) => {
-        const normalizedCfg = normalizeMultiAccountChannelConfig('moltbot-popo', cfg);
-        const accounts = readAccountsFromChannelConfig(normalizedCfg);
-        if (accounts) {
-          const instances = Object.entries(accounts).map(([accountId, accountCfg], idx) => ({
-            ...accountCfg,
-            instanceId: accountId,
-            instanceName: (accountCfg as Record<string, unknown>).name as string || `POPO Bot ${idx + 1}`,
-          })) as PopoInstanceConfig[];
-          imStore.setPopoMultiInstanceConfig({ instances });
-          return;
-        }
-        // Legacy single-account format: wrap as first instance
-        const { randomUUID } = require('crypto') as typeof import('crypto');
-        const instanceId = randomUUID();
-        imStore.setPopoInstanceConfig(instanceId, {
-          ...cfg,
-          instanceId,
-          instanceName: 'POPO Bot 1',
-        });
-      },
-      'nim': (cfg) => {
-        if (cfg && typeof cfg.accounts === 'object' && !Array.isArray(cfg.accounts)) {
-          imStore.setNimMultiInstanceConfig({ instances: Object.values(cfg.accounts) });
-          return;
-        }
-        if (cfg && Array.isArray(cfg.instances)) {
-          imStore.setNimMultiInstanceConfig(cfg);
-          return;
-        }
-        imStore.setNimConfig(cfg);
-      },
       'openclaw-weixin': (cfg) => imStore.setWeixinConfig(cfg),
-      'netease-bee': (cfg) => imStore.setNeteaseBeeChanConfig(cfg),
     };
 
     let syncedCount = 0;
@@ -1063,6 +997,44 @@ function readPluginLoadPaths(config: Record<string, unknown>): string[] {
   return paths.filter((value): value is string => typeof value === 'string' && value.length > 0);
 }
 
+const RETIRED_MESSAGE_PLUGIN_IDS = new Set([
+  'telegram',
+  'discord',
+  'moltbot-popo',
+  'popo',
+  'openclaw-nim-channel',
+  'nimsuite-openclaw-nim-channel',
+  'nim',
+  'openclaw-netease-bee',
+  'netease-bee',
+  'clawemail-email',
+  'email',
+]);
+
+function stripRetiredMessageRuntimeConfig(config: Record<string, unknown>): Record<string, unknown> {
+  const sanitized = { ...config };
+  if (isRecord(config.channels)) {
+    sanitized.channels = Object.fromEntries(
+      Object.entries(config.channels).filter(([channel]) => !PlatformRegistry.isRetiredIMChannel(channel)),
+    );
+  }
+  if (isRecord(config.plugins)) {
+    const plugins = { ...config.plugins };
+    if (isRecord(plugins.entries)) {
+      plugins.entries = Object.fromEntries(
+        Object.entries(plugins.entries).filter(([id]) => !RETIRED_MESSAGE_PLUGIN_IDS.has(id)),
+      );
+    }
+    if (Array.isArray(plugins.allow)) {
+      plugins.allow = plugins.allow.filter(id => (
+        typeof id !== 'string' || !RETIRED_MESSAGE_PLUGIN_IDS.has(id)
+      ));
+    }
+    sanitized.plugins = plugins;
+  }
+  return sanitized;
+}
+
 export function mergeOpenClawConfigs(
   runtimeConfig: Record<string, unknown>,
   enterpriseConfig: Record<string, unknown>,
@@ -1085,8 +1057,10 @@ export function mergeOpenClawConfigs(
     normalizedEnterpriseConfig.channels = normalizedChannels;
   }
 
-  const merged = stripMergedChannelTopLevelAccountCredentialFields(
-    deepMerge(runtimeConfig, normalizedEnterpriseConfig),
+  const merged = stripRetiredMessageRuntimeConfig(
+    stripMergedChannelTopLevelAccountCredentialFields(
+      deepMerge(runtimeConfig, normalizedEnterpriseConfig),
+    ),
   );
 
   const mergedPluginLoadPaths = Array.from(new Set([

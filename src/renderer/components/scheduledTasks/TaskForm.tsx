@@ -144,7 +144,7 @@ const CRON_QUICK_PICKS: Array<{ labelKey: string; expr: string }> = [
 ];
 
 function isIMChannel(channel: string): boolean {
-  return PlatformRegistry.isIMChannel(channel);
+  return PlatformRegistry.isIMChannel(channel) || PlatformRegistry.isRetiredIMChannel(channel);
 }
 
 function applyScheduledTaskTemplate(form: FormState, template: ScheduledTaskTemplate): FormState {
@@ -309,8 +309,13 @@ const TaskForm: React.FC<TaskFormProps> = ({
     const savedChannel = task?.delivery.channel;
     if (savedChannel && isIMChannel(savedChannel) && !base.some(o => o.value === savedChannel)) {
       const platform = PlatformRegistry.platformOfChannel(savedChannel);
-      const label = platform ? PlatformRegistry.get(platform).label : savedChannel;
-      base.push({ value: savedChannel, label });
+      const retired = PlatformRegistry.isRetiredIMChannel(savedChannel);
+      const label = platform
+        ? PlatformRegistry.get(platform).label
+        : retired
+          ? `${savedChannel} · ${i18nService.t('scheduledTasksRetiredChannel')}`
+          : savedChannel;
+      base.push({ value: savedChannel, label, retired });
     }
     return base;
   });
@@ -352,7 +357,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
 
   const isAdvanced = form.planType === 'advanced';
   const isCron = form.planType === 'cron';
-  const showConversationSelector = isIMChannel(form.notifyChannel);
+  const showConversationSelector = PlatformRegistry.isIMChannel(form.notifyChannel);
   const isSystemEventTask = task?.payload.kind === PayloadKind.SystemEvent;
 
   useEffect(() => {
@@ -1344,7 +1349,8 @@ const TaskForm: React.FC<TaskFormProps> = ({
                       <button
                         type="button"
                         key={`${channel.value}:${channel.accountId ?? ''}`}
-                        className={`w-full flex items-center gap-2 px-3 py-2 text-left text-foreground hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover transition-colors ${
+                        disabled={channel.retired === true}
+                        className={`w-full flex items-center gap-2 px-3 py-2 text-left text-foreground hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover transition-colors disabled:cursor-not-allowed disabled:opacity-55 ${
                           isActive ? 'bg-claude-surfaceHover/50 dark:bg-claude-darkSurfaceHover/50' : ''
                         }`}
                         onClick={() => {

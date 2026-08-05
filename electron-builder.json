@@ -1,12 +1,10 @@
 {
-  "appId": "com.lobsterai.app",
-  "productName": "LobsterAI",
-  "executableName": "LobsterAI",
+  "appId": "com.logicnest.workhub",
+  "productName": "逻栖工枢",
+  "executableName": "LogicNestWorkHub",
   "directories": {
-    "output": "release"
+    "output": "release-logicnest-dev-final"
   },
-  "beforePack": "./scripts/electron-builder-hooks.cjs",
-  "afterPack": "./scripts/electron-builder-hooks.cjs",
   "files": [
     "package.json",
     "resources/SYSTEM_PROMPT.md",
@@ -45,6 +43,27 @@
   ],
   "extraResources": [
     {
+      "from": "LICENSE",
+      "to": "legal/LICENSE-LobsterAI-MIT.txt"
+    },
+    {
+      "from": "THIRD_PARTY_NOTICES.md",
+      "to": "legal/THIRD_PARTY_NOTICES.md"
+    },
+    {
+      "from": "docs",
+      "to": "documentation",
+      "filter": [
+        "client-activation.md",
+        "admin-manual.md",
+        "deployment.md",
+        "security-audit.md",
+        "skills-audit.md",
+        "network-endpoints.md",
+        "third-party-licenses.md"
+      ]
+    },
+    {
       "from": ".keyfrom-build",
       "to": "keyfrom",
       "filter": [
@@ -65,8 +84,8 @@
   ],
   "protocols": [
     {
-      "name": "LobsterAI",
-      "schemes": ["lobsterai"]
+      "name": "LogicNest WorkHub",
+      "schemes": ["logicnest"]
     }
   ],
   "mac": {
@@ -81,10 +100,10 @@
     "entitlementsInherit": "build/entitlements.mac.plist",
     "extendInfo": {
       "CFBundleIconName": "icon",
-      "NSMicrophoneUsageDescription": "LobsterAI 需要访问您的麦克风来录制语音输入并进行语音识别。",
-      "NSCalendarsUsageDescription": "LobsterAI 需要访问您的日历来帮助您查看和管理日程安排，例如查找事件、创建会议等。",
-      "NSRemindersUsageDescription": "LobsterAI 需要访问您的提醒事项来帮助您管理待办事项。",
-      "NSAppleEventsUsageDescription": "LobsterAI 需要使用 Apple Events 来控制 Calendar 应用执行自动化操作。"
+      "NSMicrophoneUsageDescription": "逻栖工枢需要访问您的麦克风来录制语音输入并进行语音识别。",
+      "NSCalendarsUsageDescription": "逻栖工枢需要访问您的日历来帮助您查看和管理日程安排。",
+      "NSRemindersUsageDescription": "逻栖工枢需要访问您的提醒事项来帮助您管理待办事项。",
+      "NSAppleEventsUsageDescription": "逻栖工枢需要使用 Apple Events 执行日历自动化操作。"
     },
     "extraResources": [
       {
@@ -163,12 +182,25 @@
     "requestedExecutionLevel": "asInvoker",
     "extraResources": [
       {
-        "from": "build-tar/win-resources.tar",
-        "to": "win-resources.tar"
+        "from": "vendor/openclaw-runtime/current",
+        "to": "cfmind",
+        "filter": [
+          "**/*"
+        ]
       },
       {
-        "from": "scripts/unpack-cfmind.cjs",
-        "to": "unpack-cfmind.cjs"
+        "from": "SKILLs",
+        "to": "SKILLs",
+        "filter": [
+          "**/*",
+          "!**/.env",
+          "!**/.env.*",
+          "!**/.venv/**",
+          "!**/node_modules/**",
+          "!**/*.map",
+          "!**/*.test.*",
+          "!**/tests/**"
+        ]
       }
     ]
   },
@@ -244,7 +276,7 @@
       }
     ],
     "desktop": {
-      "Name": "LobsterAI",
+      "Name": "逻栖工枢",
       "Comment": "AI-assisted coding and productivity tool",
       "Terminal": "false"
     }

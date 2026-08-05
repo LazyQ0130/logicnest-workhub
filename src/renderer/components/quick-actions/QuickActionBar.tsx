@@ -30,7 +30,7 @@ const QuickActionBar: React.FC<QuickActionBarProps> = ({ actions, selectedAction
   }
 
   return (
-    <div data-skin-quick-actions="true" className="flex flex-wrap items-center justify-center gap-2">
+    <div data-skin-quick-actions="true" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
       {actions.map((action) => {
         const IconComponent = iconMap[action.icon];
         const isSelected = action.id === selectedActionId;
@@ -41,16 +41,16 @@ const QuickActionBar: React.FC<QuickActionBarProps> = ({ actions, selectedAction
             type="button"
             aria-pressed={isSelected}
             onClick={() => onActionSelect(action.id)}
-            className={`group flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[length:var(--lobster-text-sidebarCompact)] font-normal leading-5 transition-all duration-200 ease-out active:translate-y-0 active:scale-[0.97] ${
+            className={`group flex min-w-0 items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-[length:var(--lobster-text-sidebarCompact)] font-medium leading-5 transition-all duration-150 active:scale-[0.98] ${
               isSelected
-                ? 'border-[color-mix(in_srgb,var(--lobster-primary)_50%,transparent)] bg-primary-muted text-primary'
-                : 'border-border-subtle bg-surface text-secondary hover:-translate-y-px hover:border-primary/30 hover:bg-surface-raised hover:text-foreground hover:shadow-subtle'
+                ? 'border-foreground/20 bg-foreground text-background shadow-subtle'
+                : 'border-border-subtle bg-surface text-secondary hover:-translate-y-px hover:border-foreground/20 hover:bg-surface-raised hover:text-foreground hover:shadow-subtle'
             }`}
           >
             {IconComponent && (
               <IconComponent
                 className={`h-3.5 w-3.5 transition-colors duration-200 ${
-                  isSelected ? 'text-primary' : 'text-secondary group-hover:text-primary'
+                  isSelected ? 'text-background' : 'text-secondary group-hover:text-foreground'
                 }`}
               />
             )}

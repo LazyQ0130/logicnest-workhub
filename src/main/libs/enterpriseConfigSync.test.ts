@@ -557,7 +557,7 @@ describe('enterpriseConfigSync', () => {
     ]);
   });
 
-  test('syncEnterpriseConfig reads moltbot-popo accounts with top-level enterprise overrides', async () => {
+  test('syncEnterpriseConfig ignores retired POPO channel config', async () => {
     const configDir = path.join(tmpDir, 'enterprise-config');
     fs.mkdirSync(configDir, { recursive: true });
     fs.writeFileSync(
@@ -635,24 +635,7 @@ describe('enterpriseConfigSync', () => {
       () => undefined,
     );
 
-    expect(setPopoMultiInstanceCalls).toEqual([
-      {
-        instances: [
-          {
-            enabled: true,
-            appKey: 'new-key',
-            appSecret: 'new-secret',
-            connectionMode: 'webhook',
-            aesKey: 'old-aes',
-            dmPolicy: 'allowlist',
-            allowFrom: ['u1'],
-            webhookPort: 3200,
-            instanceId: 'default',
-            instanceName: 'POPO Bot 1',
-          },
-        ],
-      },
-    ]);
+    expect(setPopoMultiInstanceCalls).toEqual([]);
   });
 
   test('syncEnterpriseConfig syncs openclaw agents list into Lobster agents', async () => {
@@ -894,7 +877,7 @@ describe('enterpriseConfigSync', () => {
     });
   });
 
-  test('mergeOpenClawConfigs overwrites moltbot-popo accounts with top-level enterprise fields', async () => {
+  test('mergeOpenClawConfigs strips retired POPO channel config', async () => {
     const mod = await import('./enterpriseConfigSync');
     const merged = mod.mergeOpenClawConfigs(
       {
@@ -929,29 +912,7 @@ describe('enterpriseConfigSync', () => {
       },
     );
 
-    expect(merged).toEqual({
-      channels: {
-        'moltbot-popo': {
-          accounts: {
-            default: {
-              enabled: true,
-              appKey: 'new-key',
-              appSecret: 'new-secret',
-              connectionMode: 'webhook',
-              aesKey: 'old-aes',
-              webhookPort: 3200,
-              dmPolicy: 'allowlist',
-              allowFrom: ['u1'],
-            },
-          },
-          enabled: true,
-          connectionMode: 'webhook',
-          webhookPort: 3200,
-          dmPolicy: 'allowlist',
-          allowFrom: ['u1'],
-        },
-      },
-    });
+    expect(merged).toEqual({ channels: {} });
   });
 
   for (const testCase of [

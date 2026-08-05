@@ -175,7 +175,9 @@ export const defaultConfig: AppConfig = {
   language: 'zh',
   useSystemProxy: false,
   sqliteAutoBackupEnabled: false,
-  usageAnalyticsEnabled: true,
+  // LogicNest WorkHub has no product telemetry. Keep this false even when
+  // importing an old upstream configuration.
+  usageAnalyticsEnabled: false,
   notificationSettings: defaultNotificationSettings,
   browserWebAccess: defaultBrowserWebAccessConfig,
   app: {
@@ -183,7 +185,7 @@ export const defaultConfig: AppConfig = {
     isDevelopment: process.env.NODE_ENV === 'development',
     // Default to production (official) services. Source-launched dev builds run
     // with NODE_ENV=development, but must not auto-target the internal-only test
-    // endpoints (*.inner.youdao.com) — external/open-source users can't reach
+    // endpoints on an upstream private network that external users cannot reach
     // them. Flip test mode via the hidden switch in Settings → About when the
     // internal endpoints are actually needed.
     testMode: false,

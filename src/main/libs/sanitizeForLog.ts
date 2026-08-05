@@ -6,7 +6,25 @@ const CIRCULAR_VALUE = '[circular]';
 const TRUNCATED_ITEMS_KEY = '__truncatedItems';
 const TRUNCATED_KEYS_KEY = '__truncatedKeys';
 
-export const SENSITIVE_LOG_KEY_PATTERN = /(api[-_]?key|token|secret|password|authorization|cookie|session|refresh[-_]?token|access[-_]?token)/i;
+export const SENSITIVE_LOG_KEY_PATTERN = /(api[-_]?key|token|secret|password|passphrase|authorization|cookie|credential|private[-_]?key|session|refresh[-_]?token|access[-_]?token)/i;
+
+const SENSITIVE_TEXT_PATTERNS: ReadonlyArray<{
+  pattern: RegExp;
+  replacement: string;
+}> = [
+  {
+    pattern: /-----BEGIN [^-\r\n]*PRIVATE KEY-----[\s\S]*?-----END [^-\r\n]*PRIVATE KEY-----/gi,
+    replacement: REDACTED_VALUE,
+  },
+  {
+    pattern: /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi,
+    replacement: `Bearer ${REDACTED_VALUE}`,
+  },
+  {
+    pattern: /((?:["']?)(?:[A-Za-z0-9_.-]*(?:api[-_]?key|token|secret|password|passphrase|authorization|cookie|credential|private[-_]?key)[A-Za-z0-9_.-]*)(?:["']?)\s*[:=]\s*)(["']?)([^\s,;"'}]+)/gi,
+    replacement: `$1$2${REDACTED_VALUE}`,
+  },
+] as const;
 
 const TRANSPORT_ERROR_TEXT_PATTERNS = [
   /fetch failed/i,
@@ -23,11 +41,17 @@ const TRANSPORT_ERROR_TEXT_PATTERNS = [
   /tls/i,
 ] as const;
 
+const ANSI_ESCAPE_PATTERN = /(?:\u001B\][^\u0007]*(?:\u0007|\u001B\\)|\u001B\[[0-?]*[ -/]*[@-~]|\u009B[0-?]*[ -/]*[@-~])/g;
+
+export function stripAnsiControlCharacters(value: string): string {
+  return value.replace(ANSI_ESCAPE_PATTERN, '');
+}
+
 function sanitizeForLogInternal(value: unknown, seen: WeakSet<object>, keyName?: string): unknown {
   if (typeof value === 'string') {
     return SENSITIVE_LOG_KEY_PATTERN.test(keyName || '')
       ? REDACTED_VALUE
-      : truncateForLog(value);
+      : truncateForLog(redactSensitiveText(stripAnsiControlCharacters(value)));
   }
 
   if (
@@ -71,6 +95,17 @@ function sanitizeForLogInternal(value: unknown, seen: WeakSet<object>, keyName?:
   }
 
   return String(value);
+}
+
+export function redactSensitiveText(value: string): string {
+  return SENSITIVE_TEXT_PATTERNS.reduce(
+    (sanitized, { pattern, replacement }) => sanitized.replace(pattern, replacement),
+    value,
+  );
+}
+
+export function sanitizeForLog(value: unknown): unknown {
+  return sanitizeForLogInternal(value, new WeakSet<object>());
 }
 
 export function truncateForLog(value: string, maxChars = LOG_PREVIEW_MAX_CHARS): string {

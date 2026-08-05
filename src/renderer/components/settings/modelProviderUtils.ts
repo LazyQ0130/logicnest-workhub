@@ -8,11 +8,18 @@ import {
   normalizeModelIdForComparison,
   OpenClawApi,
   ProviderAuthType,
+  ProviderCategory,
   ProviderName,
   ProviderRegistry,
   resolveModelRuntimeProfile,
 } from '../../../shared/providers';
-import { type AppConfig, defaultConfig, isCustomProvider } from '../../config';
+import {
+  type AppConfig,
+  defaultConfig,
+  getCustomProviderDefaultName,
+  getProviderDisplayName,
+  isCustomProvider,
+} from '../../config';
 import { i18nService } from '../../services/i18n';
 
 export const CUSTOM_PROVIDER_KEYS = [
@@ -31,6 +38,29 @@ export type ProviderType = BuiltinProviderType | CustomProviderType;
 export type ProvidersConfig = NonNullable<AppConfig['providers']>;
 export type ProviderConfig = ProvidersConfig[string];
 export type Model = NonNullable<ProviderConfig['models']>[number];
+
+export const PROVIDER_CATEGORY_ORDER = [
+  ProviderCategory.International,
+  ProviderCategory.Domestic,
+  ProviderCategory.Local,
+  ProviderCategory.Custom,
+] as const;
+
+export const getProviderCategory = (provider: string): ProviderCategory | undefined => (
+  isCustomProvider(provider) ? ProviderCategory.Custom : ProviderRegistry.getCategory(provider)
+);
+
+export const getProviderKeysForCategory = (
+  category: ProviderCategory,
+  providers: ProvidersConfig,
+): ProviderType[] => {
+  if (category === ProviderCategory.Custom) {
+    return CUSTOM_PROVIDER_KEYS.filter(key => providers[key] !== undefined);
+  }
+
+  return ProviderRegistry.idsByCategory(category)
+    .filter(key => providers[key] !== undefined) as ProviderType[];
+};
 
 export const hasEquivalentProviderModelId = (
   models: Array<Pick<Model, 'id'>>,
@@ -96,6 +126,42 @@ export const hasProviderAuthConfigured = (provider: ProviderType, config: Provid
   }
 
   return config.apiKey.trim().length > 0;
+};
+
+export const findPreferredProviderForCategory = (
+  category: ProviderCategory,
+  providers: ProvidersConfig,
+  rememberedProvider?: ProviderType,
+): ProviderType | undefined => {
+  const categoryProviders = getProviderKeysForCategory(category, providers);
+  if (rememberedProvider && categoryProviders.includes(rememberedProvider)) {
+    return rememberedProvider;
+  }
+
+  return categoryProviders.find(provider => {
+    const config = providers[provider];
+    return config.enabled && hasProviderAuthConfigured(provider, config);
+  }) ?? categoryProviders[0];
+};
+
+export const filterProviderKeysBySearch = (
+  providerKeysToFilter: readonly ProviderType[],
+  providers: ProvidersConfig,
+  searchText: string,
+): ProviderType[] => {
+  const normalizedSearch = searchText.trim().toLowerCase();
+  if (!normalizedSearch) {
+    return [...providerKeysToFilter];
+  }
+
+  return providerKeysToFilter.filter(provider => {
+    const config = providers[provider];
+    const displayLabel = isCustomProvider(provider)
+      ? (config.displayName || getCustomProviderDefaultName(provider))
+      : (ProviderRegistry.get(provider)?.label ?? getProviderDisplayName(provider));
+    return displayLabel.toLowerCase().includes(normalizedSearch)
+      || provider.toLowerCase().includes(normalizedSearch);
+  });
 };
 
 const normalizeBaseUrl = (baseUrl: string): string => baseUrl.trim().replace(/\/+$/, '').toLowerCase();

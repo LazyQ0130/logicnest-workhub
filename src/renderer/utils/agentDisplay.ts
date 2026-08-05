@@ -1,4 +1,5 @@
 import { AgentId, DefaultAgentProfile, LegacyAgentName } from '@shared/agent';
+import { BRAND } from '@shared/brand';
 
 import { i18nService } from '../services/i18n';
 
@@ -17,7 +18,9 @@ export const isDefaultAgentProfileName = (agent: Pick<AgentDisplaySource, 'id' |
   const normalizedName = agent.name?.trim() ?? '';
   return !normalizedName
     || normalizedName.toLowerCase() === LegacyAgentName.Main
-    || normalizedName === DefaultAgentProfile.Name;
+    || normalizedName === DefaultAgentProfile.Name
+    || normalizedName === BRAND.mainAgentNameZh
+    || normalizedName === BRAND.mainAgentNameEn;
 };
 
 export const getAgentDisplayName = (agent: Pick<AgentDisplaySource, 'id' | 'name'>): string => {
@@ -47,5 +50,5 @@ export const getAgentDisplayNameById = (
 };
 
 export const shouldUseDefaultAgentIcon = (agent: Pick<AgentDisplaySource, 'id' | 'icon'>): boolean => {
-  return isDefaultAgentId(agent.id) && !agent.icon?.trim();
+  return isDefaultAgentId(agent.id);
 };

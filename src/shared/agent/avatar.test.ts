@@ -1,11 +1,14 @@
 import { describe, expect, test } from 'vitest';
 
 import {
+  AgentAvatarIconFormat,
+  AgentAvatarIconSeparator,
   AgentAvatarSvg,
   DefaultAgentAvatar,
   DefaultAgentAvatarIcon,
   encodeAgentAvatarIcon,
   isDesignedAgentAvatarIcon,
+  LegacyAgentAvatarSvg,
   normalizeAgentAvatarIcon,
   parseAgentAvatarIcon,
 } from './avatar';
@@ -23,6 +26,16 @@ describe('agent avatar icon encoding', () => {
 
   test('exposes the default svg avatar icon', () => {
     expect(parseAgentAvatarIcon(DefaultAgentAvatarIcon)).toEqual(DefaultAgentAvatar);
+  });
+
+  test('maps the legacy lobster avatar to the owl', () => {
+    const legacyValue = [
+      AgentAvatarIconFormat.Svg,
+      LegacyAgentAvatarSvg.Lobster,
+    ].join(AgentAvatarIconSeparator.Value);
+
+    expect(parseAgentAvatarIcon(legacyValue)).toEqual({ svg: AgentAvatarSvg.Owl });
+    expect(normalizeAgentAvatarIcon(legacyValue)).toBe(DefaultAgentAvatarIcon);
   });
 
   test('leaves legacy emoji icons untouched', () => {

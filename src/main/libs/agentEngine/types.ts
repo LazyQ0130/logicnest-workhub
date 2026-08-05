@@ -13,6 +13,7 @@ import type {
   KitReference,
   ResolvedKitCapabilities,
 } from '../../../shared/kit/constants';
+import type { CoworkRunPolicy } from '../../../shared/meetingRoom/constants';
 import type { SkinWorkflowKind } from '../../../shared/skin/constants';
 import type { CoworkMessage, CoworkSessionStatus } from '../../coworkStore';
 
@@ -31,6 +32,13 @@ export type PermissionResult =
       interrupt?: boolean;
       toolUseID?: string;
     };
+
+export type MeetingRunContext = {
+  meetingId: string;
+  turnId: string;
+  attemptId: string;
+  runEpoch: number;
+};
 
 export const ENGINE_SWITCHED_CODE = 'ENGINE_SWITCHED';
 
@@ -54,6 +62,26 @@ export interface CoworkRuntimeEvents {
   complete: (sessionId: string, claudeSessionId: string | null) => void;
   error: (sessionId: string, error: string) => void;
   sessionStopped: (sessionId: string) => void;
+  runStarted: (
+    sessionId: string,
+    runId: string,
+    runPolicy: CoworkRunPolicy,
+    meetingContext?: MeetingRunContext,
+  ) => void;
+  meetingRunStream: (
+    sessionId: string,
+    runId: string,
+    content: string,
+    meetingContext: MeetingRunContext,
+  ) => void;
+  runPolicyViolation: (
+    sessionId: string,
+    runId: string,
+    runPolicy: CoworkRunPolicy,
+    toolName: string,
+    reason: string,
+    meetingContext?: MeetingRunContext,
+  ) => void;
 }
 
 export type CoworkContextUsage = {
@@ -123,6 +151,8 @@ export type CoworkStartOptions = {
   mediaReferences?: CoworkMediaAttachmentRef[];
   selectedTextSnippets?: CoworkSelectedTextSnippet[];
   browserAnnotations?: CoworkBrowserAnnotationMessageBatch[];
+  runPolicy?: CoworkRunPolicy;
+  meetingRunContext?: MeetingRunContext;
 };
 
 export type CoworkContinueOptions = {
@@ -139,6 +169,8 @@ export type CoworkContinueOptions = {
   mediaReferences?: CoworkMediaAttachmentRef[];
   selectedTextSnippets?: CoworkSelectedTextSnippet[];
   browserAnnotations?: CoworkBrowserAnnotationMessageBatch[];
+  runPolicy?: CoworkRunPolicy;
+  meetingRunContext?: MeetingRunContext;
 };
 
 export interface CoworkSessionPatchResult {

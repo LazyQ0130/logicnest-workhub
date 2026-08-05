@@ -21,7 +21,7 @@ export interface SkillHandlerDeps {
 }
 
 export function registerSkillHandlers(deps: SkillHandlerDeps): void {
-  const { getSkillManager, getSkillStoreUrl, getOpenClawRuntimeAdapter } = deps;
+  const { getSkillManager, getOpenClawRuntimeAdapter } = deps;
 
   ipcMain.handle('skills:list', () => {
     try {
@@ -89,11 +89,15 @@ export function registerSkillHandlers(deps: SkillHandlerDeps): void {
   });
 
   ipcMain.handle('skills:download', async (_event, source: string) => {
-    return getSkillManager().downloadSkill(source);
+    const resolvedSource = path.resolve(source);
+    if (!path.isAbsolute(source) || !fs.existsSync(resolvedSource)) {
+      return { success: false, error: 'Only an explicitly selected local skill folder or archive can be imported' };
+    }
+    return getSkillManager().downloadSkill(resolvedSource);
   });
 
-  ipcMain.handle('skills:upgrade', async (_event, skillId: string, downloadUrl: string) => {
-    return getSkillManager().upgradeSkill(skillId, downloadUrl);
+  ipcMain.handle('skills:upgrade', async () => {
+    return { success: false, error: 'Remote skill upgrades are disabled; import an audited local version instead' };
   });
 
   ipcMain.handle('skills:confirmInstall', async (_event, pendingId: string, action: string) => {
@@ -158,30 +162,8 @@ export function registerSkillHandlers(deps: SkillHandlerDeps): void {
   });
 
   ipcMain.handle('skills:fetchMarketplace', async () => {
-    const url = getSkillStoreUrl();
-    console.log(`[SkillMarketplace] fetching from: ${url}`);
-    try {
-      const https = await import('https');
-      const data = await new Promise<string>((resolve, reject) => {
-        const req = https.get(url, { timeout: 10000 }, (res) => {
-          if (res.statusCode !== 200) {
-            reject(new Error(`HTTP ${res.statusCode}`));
-            res.resume();
-            return;
-          }
-          let body = '';
-          res.setEncoding('utf8');
-          res.on('data', (chunk: string) => { body += chunk; });
-          res.on('end', () => resolve(body));
-          res.on('error', reject);
-        });
-        req.on('error', reject);
-        req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
-      });
-      return { success: true, data };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Failed to fetch skill marketplace' };
-    }
+    const data = JSON.stringify({ data: { value: { localSkill: [], marketplace: [], marketTags: [] } } });
+    return { success: true, data };
   });
 
   ipcMain.handle('skills:detectFromOpenClaw', async () => {

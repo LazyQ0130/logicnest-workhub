@@ -13,6 +13,8 @@ import { APP_NAME, DB_FILENAME } from '../../appConstants';
 import { SQLITE_BACKUP_DIR_NAME } from '../sqliteBackup/constants';
 
 const CURRENT_ARCHIVE_ROOT = APP_NAME;
+const LEGACY_ARCHIVE_ROOTS = ['LobsterAI'] as const;
+const SUPPORTED_ARCHIVE_ROOTS: readonly string[] = [CURRENT_ARCHIVE_ROOT, ...LEGACY_ARCHIVE_ROOTS];
 const MANIFEST_FILE_NAME = '.lobsterai-migration.json';
 const PENDING_RESTORE_FILE_NAME = '.lobsterai-data-migration-restore-pending.json';
 const LAST_RESTORE_RESULT_FILE_NAME = '.lobsterai-data-migration-restore-result.json';
@@ -1058,7 +1060,7 @@ const readMigrationManifestSync = (sourceRoot: string): MigrationManifest => {
   if (manifest.version !== ARCHIVE_FORMAT_VERSION) {
     throw new Error(`Backup archive manifest version is unsupported: ${String(manifest.version ?? 'missing')}.`);
   }
-  if (manifest.archiveRoot !== CURRENT_ARCHIVE_ROOT) {
+  if (!SUPPORTED_ARCHIVE_ROOTS.includes(manifest.archiveRoot)) {
     throw new Error(`Backup archive manifest root is unsupported: ${manifest.archiveRoot || 'missing'}.`);
   }
   return manifest;
@@ -1216,8 +1218,10 @@ const assertSafeArchiveEntryPath = (entryPath: string): string => {
 };
 
 const resolveArchiveRoot = (entryPath: string): Pick<MigrationArchiveInfo, 'root'> | null => {
-  if (entryPath === CURRENT_ARCHIVE_ROOT || entryPath.startsWith(`${CURRENT_ARCHIVE_ROOT}/`)) {
-    return { root: CURRENT_ARCHIVE_ROOT };
+  for (const root of SUPPORTED_ARCHIVE_ROOTS) {
+    if (entryPath === root || entryPath.startsWith(`${root}/`)) {
+      return { root };
+    }
   }
   return null;
 };
@@ -1226,7 +1230,7 @@ const isArchiveSqliteDatabaseEntry = (entryPath: string, root: string): boolean 
   entryPath === `${root}/${DB_FILENAME}`;
 
 const isArchiveRootParentDirectory = (entryPath: string): boolean => (
-  `${CURRENT_ARCHIVE_ROOT}/`.startsWith(`${entryPath}/`)
+  SUPPORTED_ARCHIVE_ROOTS.some(root => `${root}/`.startsWith(`${entryPath}/`))
 );
 
 const isArchiveManifestEntry = (entryPath: string, root: string): boolean =>
@@ -1402,7 +1406,7 @@ const extractMigrationArchiveToTempSync = (
 
     const sourceRoot = path.join(tempRoot, ...info.root.split('/'));
     if (!fs.existsSync(sourceRoot) || !fs.statSync(sourceRoot).isDirectory()) {
-      throw new Error('Backup archive did not extract a valid LobsterAI user data directory.');
+      throw new Error(`Backup archive did not extract a valid ${APP_NAME} user data directory.`);
     }
     if (options.validateArchiveContent ?? true) {
       validateExtractedArchiveContentSync(sourceRoot);

@@ -30,6 +30,7 @@ type OpenClawApprovalControllerOptions = {
   emitPermissionRequest: (sessionId: string, request: PermissionRequest) => void;
   emitPermissionResolved: (sessionId: string, requestId: string) => void;
   emitError: (sessionId: string, error: string) => void;
+  getForcedDenialReason?: (sessionId: string, toolName: string) => string | null;
 };
 
 export class OpenClawApprovalController {
@@ -109,6 +110,21 @@ export class OpenClawApprovalController {
       return;
     }
 
+    const forcedDenialReason = this.options.getForcedDenialReason?.(sessionId, 'exec');
+    if (forcedDenialReason) {
+      this.pendingApprovals.set(requestId, {
+        requestId,
+        sessionId,
+        kind: 'exec',
+      });
+      this.respondToPermission(requestId, {
+        behavior: 'deny',
+        message: forcedDenialReason,
+        interrupt: true,
+      });
+      return;
+    }
+
     if (shouldAutoApprove) {
       this.pendingApprovals.set(requestId, {
         requestId,
@@ -157,6 +173,22 @@ export class OpenClawApprovalController {
     }
     if (this.options.isManualStopSuppressed(sessionId, sessionKey)) {
       console.log('[OpenClawRuntime] suppressed plugin approval for manually stopped desktop session, requestId:', requestId, 'sessionId:', sessionId);
+      return;
+    }
+
+    const forcedDenialReason = this.options.getForcedDenialReason?.(sessionId, 'plugin');
+    if (forcedDenialReason) {
+      this.pendingApprovals.set(requestId, {
+        requestId,
+        sessionId,
+        kind: 'plugin',
+        allowedDecisions,
+      });
+      this.respondToPermission(requestId, {
+        behavior: 'deny',
+        message: forcedDenialReason,
+        interrupt: true,
+      });
       return;
     }
 
