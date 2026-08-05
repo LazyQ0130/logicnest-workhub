@@ -76,7 +76,7 @@ npm run admin:bootstrap
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/auth/register` | `{phone,password,confirmPassword}`；手机号默认 +86 |
+| POST | `/auth/register` | `{phone,password,confirmPassword,deviceFingerprint?,clientVersion?}`；手机号默认 +86，桌面端会在创建账号前校验设备是否可用 |
 | POST | `/auth/login` | 返回短期 JWT 和一次性轮换 refresh token；可附 `deviceFingerprint` |
 | POST | `/auth/refresh` | `{refreshToken}`；旧 token 立即撤销，重复使用会撤销整个 family |
 | POST | `/auth/logout` | 撤销当前 refresh token |

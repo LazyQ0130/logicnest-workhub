@@ -50,6 +50,7 @@ package-lock.json
 nul
 .work.env
 .keyfrom-build/
+.license-build/
 
 .playwright-mcp/
 .cowork-temp/

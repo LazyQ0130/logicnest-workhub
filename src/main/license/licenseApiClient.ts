@@ -59,10 +59,22 @@ export class LicenseApiClient {
     this.timeoutMs = options.timeoutMs ?? 12_000;
   }
 
-  public register(input: { phone: string; password: string; passwordConfirmation: string }): Promise<LicenseApiPayload> {
+  public register(input: {
+    phone: string;
+    password: string;
+    passwordConfirmation: string;
+    deviceFingerprint: string;
+    clientVersion: string;
+  }): Promise<LicenseApiPayload> {
     return this.request('/auth/register', {
       method: 'POST',
-      body: { phone: input.phone, password: input.password, confirmPassword: input.passwordConfirmation },
+      body: {
+        phone: input.phone,
+        password: input.password,
+        confirmPassword: input.passwordConfirmation,
+        deviceFingerprint: input.deviceFingerprint,
+        clientVersion: input.clientVersion,
+      },
     });
   }
 

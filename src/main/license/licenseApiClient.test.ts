@@ -18,12 +18,19 @@ describe('LicenseApiClient', () => {
     }), { status: 200, headers: { 'content-type': 'application/json' } }));
     const client = new LicenseApiClient({ baseUrl: 'https://license.example/api/v1/', fetchImpl: fetchMock });
 
-    const result = await client.register({ phone: '13800000000', password: 'password-1', passwordConfirmation: 'password-1' });
+    const result = await client.register({
+      phone: '13800000000',
+      password: 'password-1',
+      passwordConfirmation: 'password-1',
+      deviceFingerprint: 'device-fingerprint',
+      clientVersion: '1.0.0-test',
+    });
 
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock.mock.calls[0]?.[0]).toBe('https://license.example/api/v1/auth/register');
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       phone: '13800000000', password: 'password-1', confirmPassword: 'password-1',
+      deviceFingerprint: 'device-fingerprint', clientVersion: '1.0.0-test',
     });
     expect(result).toMatchObject({
       user: { uid: 'LN-1', status: 'active' },
