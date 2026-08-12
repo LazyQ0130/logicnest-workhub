@@ -3,7 +3,6 @@ import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState 
 
 import { i18nService } from '../../services/i18n';
 import { LogReporterAction, reportYdAnalyzer } from '../../services/logReporter';
-import { formatUserFacingError } from '../../services/userFacingError';
 import PluginConfigPage from './PluginConfigPage';
 
 type PluginSource = 'npm' | 'clawhub' | 'git' | 'local' | 'openclaw';
@@ -836,7 +835,7 @@ export default function PluginsSettings({ handleRef }: PluginsSettingsProps) {
             {/* Error */}
             {form.source !== 'openclaw' && installError && (
               <div className="mt-3 text-xs text-destructive bg-destructive/10 rounded-md p-2">
-                {formatUserFacingError(installError, { fallbackKey: 'pluginsInstallFailed' })}
+                {installError}
               </div>
             )}
 

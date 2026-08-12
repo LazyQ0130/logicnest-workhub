@@ -39,7 +39,6 @@ import {
   type CoworkPendingSteer,
   CoworkSteerStatus,
 } from '../../../shared/cowork/steer';
-import { LicensePhase, type LicenseState } from '../../../shared/license';
 import { agentService } from '../../services/agent';
 import { configService } from '../../services/config';
 import { coworkService } from '../../services/cowork';
@@ -440,10 +439,6 @@ const EMPTY_SELECTED_TEXT_SNIPPETS: CoworkSelectedTextSnippet[] = [];
 const EMPTY_BROWSER_ANNOTATION_BATCHES: CoworkBrowserAnnotationBatch[] = [];
 const EMPTY_STEERS: CoworkPendingSteer[] = [];
 
-const isLocalLicenseAuthorized = (state: LicenseState | null): boolean => (
-  state?.phase === LicensePhase.Authorized || state?.phase === LicensePhase.OfflineGrace
-);
-
 const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInputProps>(
   (props, ref) => {
     const {
@@ -502,32 +497,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     const isLoggedIn = useSelector((state: RootState) => state.auth.isLoggedIn);
     const authQuota = useSelector((state: RootState) => state.auth.quota);
     const asrQuota = useSelector((state: RootState) => state.asrQuota);
-    const [localLicenseState, setLocalLicenseState] = useState<LicenseState | null>(null);
-    const voiceIsLoggedIn = localLicenseState === null
-      ? isLoggedIn
-      : isLocalLicenseAuthorized(localLicenseState);
-
-    // Voice input is gated by the local license service. The legacy auth slice
-    // is still synchronized for shared controls, but it may lag one render
-    // behind after login and incorrectly show the login prompt.
-    useEffect(() => {
-      const licenseApi = window.electron?.license;
-      if (!licenseApi) return;
-
-      let mounted = true;
-      const handleLicenseState = (state: LicenseState) => {
-        if (mounted) setLocalLicenseState(state);
-      };
-
-      void licenseApi.getState().then(handleLicenseState).catch((error) => {
-        console.warn('[CoworkPromptInput] failed to read local license state:', error);
-      });
-      const unsubscribe = licenseApi.onStateChanged(handleLicenseState);
-      return () => {
-        mounted = false;
-        unsubscribe();
-      };
-    }, []);
     const [value, setValue] = useState(draftPrompt);
     const [steerValue, setSteerValue] = useState(steerDraft);
     const [steerInputActive, setSteerInputActive] = useState(false);
@@ -711,7 +680,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     value,
     setValue,
     textareaRef,
-    isLoggedIn: voiceIsLoggedIn,
+    isLoggedIn,
     disabled,
     onQuotaExhausted: () => setShowVoiceQuotaPrompt(true),
   });
@@ -807,12 +776,12 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   }, [dispatch]);
 
   useEffect(() => {
-    if (!voiceIsLoggedIn) {
+    if (!isLoggedIn) {
       dispatch(resetAsrQuota());
       return;
     }
     ensureFreshAsrQuota();
-  }, [dispatch, ensureFreshAsrQuota, voiceIsLoggedIn]);
+  }, [dispatch, ensureFreshAsrQuota, isLoggedIn]);
 
   const handleVoiceInputClick = useCallback(() => {
     if (isVoiceRecording) {
@@ -828,7 +797,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       });
       return;
     }
-    if (!voiceIsLoggedIn) {
+    if (!isLoggedIn) {
       reportPromptControl('voice_record_blocked', {
         blockedReason: 'login_required',
       });
@@ -858,7 +827,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     dispatch,
     handleVoiceInput,
     isAsrSubscribed,
-    voiceIsLoggedIn,
+    isLoggedIn,
     isVoiceRecording,
     recordingElapsedSeconds,
     reportPromptControl,
@@ -2972,7 +2941,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     <VoiceInputButton
       buttonClassName={buttonClassName}
       iconClassName={iconClassName}
-      isLoggedIn={voiceIsLoggedIn}
+      isLoggedIn={isLoggedIn}
       disabled={disabled}
       isQuotaExhausted={isAsrQuotaExhaustedToday}
       isRecording={isVoiceRecording}
@@ -3512,7 +3481,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   );
 
   return (
-    <div className="relative">
+    <div data-skin-prompt-input="true" className="relative">
       {goalEditModalOpen && (
         <Modal
           onClose={handleCloseGoalEditModal}

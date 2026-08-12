@@ -38,10 +38,6 @@ const environmentSchema = z.object({
   OFFLINE_GRACE_HOURS: intFromEnv(72, 1, 72),
   HEARTBEAT_INTERVAL_SECONDS: intFromEnv(300, 30, 3600),
   ONLINE_WINDOW_SECONDS: intFromEnv(600, 60, 7200),
-  CATALOG_STORAGE_DIR: z.string().trim().min(1).default('./catalog-storage'),
-  CATALOG_UPLOAD_MAX_BYTES: intFromEnv(536_870_912, 1_048_576, 1_073_741_824),
-  UPDATE_STORAGE_DIR: z.string().trim().min(1).default('./update-storage'),
-  UPDATE_UPLOAD_MAX_BYTES: intFromEnv(1_073_741_824, 1_048_576, 2_147_483_648),
   ADMIN_BOOTSTRAP_USERNAME: z.string().trim().min(3).max(64).optional().or(z.literal('')),
   ADMIN_BOOTSTRAP_PASSWORD: z.string().min(12).optional().or(z.literal('')),
 });
@@ -73,10 +69,6 @@ export type AppConfig = {
   offlineGraceHours: number;
   heartbeatIntervalSeconds: number;
   onlineWindowSeconds: number;
-  catalogStorageDir: string;
-  catalogUploadMaxBytes: number;
-  updateStorageDir: string;
-  updateUploadMaxBytes: number;
   adminBootstrapUsername?: string;
   adminBootstrapPassword?: string;
 };
@@ -143,11 +135,7 @@ export const parseConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => 
     adminSessionTtlHours: value.ADMIN_SESSION_TTL_HOURS,
     offlineGraceHours: value.OFFLINE_GRACE_HOURS,
     heartbeatIntervalSeconds: value.HEARTBEAT_INTERVAL_SECONDS,
-  onlineWindowSeconds: value.ONLINE_WINDOW_SECONDS,
-  catalogStorageDir: value.CATALOG_STORAGE_DIR,
-  catalogUploadMaxBytes: value.CATALOG_UPLOAD_MAX_BYTES,
-    updateStorageDir: value.UPDATE_STORAGE_DIR,
-    updateUploadMaxBytes: value.UPDATE_UPLOAD_MAX_BYTES,
+    onlineWindowSeconds: value.ONLINE_WINDOW_SECONDS,
     ...(bootstrapUsername ? { adminBootstrapUsername: bootstrapUsername } : {}),
     ...(bootstrapPassword ? { adminBootstrapPassword: bootstrapPassword } : {}),
   };

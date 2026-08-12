@@ -38,8 +38,8 @@ jobs:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       LOGICNEST_UNSIGNED_BUILD: '1'
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
           cache: npm
@@ -49,7 +49,7 @@ jobs:
       - name: Build unsigned macOS package
         run: npm run dist:mac:arm64
       - name: Upload macOS workflow artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: logicnest-workhub-macos-unsigned
           path: release/*.dmg
@@ -64,8 +64,8 @@ jobs:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       LOGICNEST_UNSIGNED_BUILD: '1'
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
           cache: npm
@@ -77,7 +77,7 @@ jobs:
       - name: Build unsigned Windows package
         run: npm run dist:win
       - name: Upload Windows workflow artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: logicnest-workhub-windows-unsigned
           path: release/*.exe
@@ -89,8 +89,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
           cache: npm
@@ -104,7 +104,7 @@ jobs:
       - name: Build Linux packages
         run: npm run dist:linux
       - name: Upload Linux workflow artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: logicnest-workhub-linux
           path: |

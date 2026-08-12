@@ -19,7 +19,6 @@ vi.mock('electron', () => ({
 }));
 
 import {
-  isBundledNpmRuntimeComplete,
   resolveNodePackageCliCommand,
   resolveNodeRuntimeForSpawn,
   selectSpawnableNodeCandidate,
@@ -95,41 +94,10 @@ describe('resolveNodeRuntimeForSpawn', () => {
 });
 
 describe('resolveNodePackageCliCommand', () => {
-  test('recognizes a complete npm runtime including nested dependencies', () => {
-    const npmRoot = path.join(mockElectronState.appPath, 'npm-runtime');
-    for (const relativePath of [
-      'bin/npm-cli.js',
-      'bin/npx-cli.js',
-      'node_modules/graceful-fs',
-      'node_modules/@npmcli/arborist',
-      'node_modules/npm-registry-fetch',
-      'node_modules/cacache',
-    ]) {
-      const target = path.join(npmRoot, relativePath);
-      fs.mkdirSync(path.dirname(target), { recursive: true });
-      fs.writeFileSync(target, '');
-    }
-
-    expect(isBundledNpmRuntimeComplete(npmRoot)).toBe(true);
-    fs.rmSync(path.join(npmRoot, 'node_modules', 'graceful-fs'), { recursive: true, force: true });
-    expect(isBundledNpmRuntimeComplete(npmRoot)).toBe(false);
-  });
-
   test('prefers bundled npm-cli.js through Electron-as-node', () => {
-    const npmRoot = path.join(mockElectronState.appPath, 'node_modules', 'npm');
-    const npmCli = path.join(npmRoot, 'bin', 'npm-cli.js');
-    for (const relativePath of [
-      'bin/npm-cli.js',
-      'bin/npx-cli.js',
-      'node_modules/graceful-fs',
-      'node_modules/@npmcli/arborist',
-      'node_modules/npm-registry-fetch',
-      'node_modules/cacache',
-    ]) {
-      const target = path.join(npmRoot, relativePath);
-      fs.mkdirSync(path.dirname(target), { recursive: true });
-      fs.writeFileSync(target, '');
-    }
+    const npmCli = path.join(mockElectronState.appPath, 'node_modules', 'npm', 'bin', 'npm-cli.js');
+    fs.mkdirSync(path.dirname(npmCli), { recursive: true });
+    fs.writeFileSync(npmCli, '');
 
     const command = resolveNodePackageCliCommand('npm', { PATH: 'ignored' });
 

@@ -15,33 +15,29 @@ import {
   Input,
   InputNumber,
   Modal,
-  Radio,
   Select,
   Space,
   Table,
-  type TableProps,
   Tabs,
   Tag,
   Typography,
+  type TableProps,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-
 import { adminApi } from '../api/adminApi';
 import {
-  type GenerateKeysResponse,
-  type LicenseKeyRecord,
   LicenseKeyStatus,
-  LicenseMode,
-  type LicensePolicy,
-  type MembershipPlan,
-  type PageResponse,
   Permission,
   PlanStatus,
+  type GenerateKeysResponse,
+  type LicenseKeyRecord,
+  type MembershipPlan,
+  type PageResponse,
 } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
-import { EmptyPanel, ErrorPanel, LoadingPanel } from '../components/Feedback';
+import { ErrorPanel, EmptyPanel, LoadingPanel } from '../components/Feedback';
 import { PageIntro, Panel } from '../components/PageIntro';
 import { downloadText, formatDateTime, normalizeGeneratedKeys } from '../utils/format';
 import { errorMessage } from '../utils/ui';
@@ -105,8 +101,6 @@ export function PlansPage() {
   const [generateOpen, setGenerateOpen] = useState(false);
   const [generateForm] = Form.useForm<GenerateFormValues>();
   const [generated, setGenerated] = useState<GenerateKeysResponse>();
-  const [licensePolicy, setLicensePolicy] = useState<LicensePolicy>();
-  const [policyLoading, setPolicyLoading] = useState(true);
   const { modal, message } = App.useApp();
 
   const loadPlans = useCallback(async () => {
@@ -122,17 +116,6 @@ export function PlansPage() {
     }
   }, []);
 
-  const loadLicensePolicy = useCallback(async () => {
-    setPolicyLoading(true);
-    try {
-      setLicensePolicy(await adminApi.licensePolicy());
-    } catch (loadError) {
-      message.error(errorMessage(loadError));
-    } finally {
-      setPolicyLoading(false);
-    }
-  }, [message]);
-
   const loadKeys = useCallback(async (page = keys.page, pageSize = keys.pageSize) => {
     setKeysLoading(true);
     setKeysError(undefined);
@@ -146,7 +129,6 @@ export function PlansPage() {
   }, [keyBatchId, keyPlanId, keySearch, keyStatus, keys.page, keys.pageSize]);
 
   useEffect(() => { void loadPlans(); }, [loadPlans]);
-  useEffect(() => { void loadLicensePolicy(); }, [loadLicensePolicy]);
   useEffect(() => {
     if (activeTab === 'keys' && canReadKeys) void loadKeys(1, 20);
     // Filters intentionally reset page; adding loadKeys here would also make
@@ -190,12 +172,6 @@ export function PlansPage() {
         await loadPlans();
       },
     });
-  };
-
-  const updateLicenseMode = async (mode: LicenseMode) => {
-    await adminApi.updateLicensePolicy(mode);
-    setLicensePolicy({ mode });
-    message.success('授权模式已更新');
   };
 
   const deletePlan = (plan: MembershipPlan) => {
@@ -269,7 +245,7 @@ export function PlansPage() {
   const keyColumns: TableProps<LicenseKeyRecord>['columns'] = [
     { title: '卡密（脱敏）', key: 'code', render: (_, record) => <Typography.Text code>{record.maskedCode || record.codePreview || `••••-${record.lastFour || '----'}`}</Typography.Text> },
     { title: '套餐', key: 'plan', render: (_, record) => record.planName || plans.find((plan) => plan.id === record.planId)?.name || record.planId },
-    { title: '状态', dataIndex: 'status', key: 'status', render: (value: LicenseKeyStatus, record: LicenseKeyRecord) => <Space size={4}>{keyStatusTag(value)}{record.reusableAfterUnbind && <Tag color="processing">解绑后可复用</Tag>}</Space> },
+    { title: '状态', dataIndex: 'status', key: 'status', render: (value: LicenseKeyStatus) => keyStatusTag(value) },
     { title: '批次', dataIndex: 'batchId', key: 'batchId', render: (value: string) => <Typography.Text copyable={{ text: value }}>{value}</Typography.Text> },
     { title: '生成时间', dataIndex: 'createdAt', key: 'createdAt', render: (value: string) => formatDateTime(value) },
     { title: '兑换时间', dataIndex: 'redeemedAt', key: 'redeemedAt', render: (value: string | null) => formatDateTime(value) },
@@ -309,23 +285,6 @@ export function PlansPage() {
           {canWriteKeys && activeTab === 'keys' && <Button type="primary" icon={<PlusOutlined />} onClick={() => setGenerateOpen(true)} disabled={!plans.some((plan) => plan.status === PlanStatus.Active)}>批量制卡</Button>}
         </Space>}
       />
-      <Panel className="filter-panel">
-        <Space direction="vertical" size={8} style={{ width: '100%' }}>
-          <Typography.Text strong>卡密授权模式</Typography.Text>
-          <Typography.Text type="secondary">单设备模式下，解绑后同一账号可以把原卡密迁移到新设备；多设备模式允许同一账号在多台设备使用同一张卡密，但新设备登录会让旧登录失效。</Typography.Text>
-          <Radio.Group
-            value={licensePolicy?.mode}
-            disabled={!canWritePlans || policyLoading}
-            onChange={(event) => {
-              void updateLicenseMode(event.target.value as LicenseMode).catch((error) => message.error(errorMessage(error)));
-            }}
-            options={[
-              { value: LicenseMode.SingleDevice, label: '一卡一设备（解绑可换机）' },
-              { value: LicenseMode.MultiDeviceSingleSession, label: '一卡多设备（单账号单在线）' },
-            ]}
-          />
-        </Space>
-      </Panel>
       <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
 
       <Modal title={editingPlan ? '编辑套餐' : '新建套餐'} open={planModalOpen} onCancel={() => setPlanModalOpen(false)} footer={null} destroyOnHidden>

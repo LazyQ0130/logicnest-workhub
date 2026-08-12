@@ -11,20 +11,10 @@ class KitService {
     if (this.fetchPromise) {
       return this.fetchPromise;
     }
-    this.fetchPromise = Promise.race([
-      this.loadMarketplaceKits(),
-      new Promise<MarketplaceKit[]>((resolve) => {
-        window.setTimeout(() => {
-          console.warn('[KitService] marketplace request timed out');
-          resolve([]);
-        }, 15_000);
-      }),
-    ]);
-    try {
-      return await this.fetchPromise;
-    } finally {
-      this.fetchPromise = null;
-    }
+    this.fetchPromise = this.loadMarketplaceKits();
+    const result = await this.fetchPromise;
+    this.fetchPromise = null;
+    return result;
   }
 
   private async loadMarketplaceKits(): Promise<MarketplaceKit[]> {

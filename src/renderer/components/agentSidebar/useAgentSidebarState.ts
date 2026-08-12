@@ -34,7 +34,6 @@ const hasSessionChanged = (
     || previous.status !== next.status
     || previous.pinned !== next.pinned
     || previous.pinOrder !== next.pinOrder
-    || previous.cwd !== next.cwd
     || previous.updatedAt !== next.updatedAt
     || previous.createdAt !== next.createdAt
     || normalizeAgentId(previous.agentId) !== normalizeAgentId(next.agentId);
@@ -112,7 +111,6 @@ export const toAgentSidebarTaskNode = (
     status: session.status,
     pinned: session.pinned,
     pinOrder: session.pinOrder ?? null,
-    cwd: session.cwd,
     updatedAt: session.updatedAt,
     createdAt: session.createdAt,
     indicator: deriveAgentSidebarIndicator(session, unreadSessionIds, pendingPermissionSessionIds),
@@ -127,15 +125,6 @@ export const collapseAgentSidebarTaskList = (
   return expandedTaskListAgentIds.includes(agentId)
     ? expandedTaskListAgentIds.filter((id) => id !== agentId)
     : expandedTaskListAgentIds;
-};
-
-export const toggleCollapsedWorkspaceKey = (
-  collapsedWorkspaceKeys: string[],
-  workspaceKey: string,
-): string[] => {
-  return collapsedWorkspaceKeys.includes(workspaceKey)
-    ? collapsedWorkspaceKeys.filter((key) => key !== workspaceKey)
-    : [...collapsedWorkspaceKeys, workspaceKey];
 };
 
 export const removeAgentSidebarTaskPreviews = (
@@ -180,7 +169,6 @@ export const useAgentSidebarState = () => {
 
   const [expandedAgentIds, setExpandedAgentIds] = useState<string[]>([]);
   const [expandedTaskListAgentIds, setExpandedTaskListAgentIds] = useState<string[]>([]);
-  const [collapsedWorkspaceKeys, setCollapsedWorkspaceKeys] = useState<string[]>([]);
   const [visibleTaskLimitByAgentId, setVisibleTaskLimitByAgentId] = useState<Record<string, number>>({});
   const [taskPreviewsByAgentId, setTaskPreviewsByAgentId] = useState<Record<string, CoworkSessionSummary[]>>({});
   const [hasMoreTasksByAgentId, setHasMoreTasksByAgentId] = useState<Record<string, boolean>>({});
@@ -230,7 +218,6 @@ export const useAgentSidebarState = () => {
         if (cancelled) return;
         setExpandedAgentIds(preference?.expandedAgentIds ?? []);
         setExpandedTaskListAgentIds(preference?.expandedTaskListAgentIds ?? []);
-        setCollapsedWorkspaceKeys(preference?.collapsedWorkspaceKeys ?? []);
       })
       .finally(() => {
         if (!cancelled) {
@@ -247,7 +234,6 @@ export const useAgentSidebarState = () => {
     const preference: AgentSidebarPreferenceState = {
       expandedAgentIds,
       expandedTaskListAgentIds,
-      collapsedWorkspaceKeys,
       selectedAgentId: currentAgentId,
       selectedTaskId: currentSessionId ?? undefined,
     };
@@ -255,7 +241,6 @@ export const useAgentSidebarState = () => {
   }, [
     currentAgentId,
     currentSessionId,
-    collapsedWorkspaceKeys,
     expandedAgentIds,
     expandedTaskListAgentIds,
     preferenceLoaded,
@@ -432,12 +417,6 @@ export const useAgentSidebarState = () => {
       return previous.includes(agentId)
         ? previous.filter((id) => id !== agentId)
         : [...previous, agentId];
-    });
-  }, []);
-
-  const toggleWorkspaceCollapsed = useCallback((workspaceKey: string) => {
-    setCollapsedWorkspaceKeys((previous) => {
-      return toggleCollapsedWorkspaceKey(previous, workspaceKey);
     });
   }, []);
 
@@ -648,7 +627,6 @@ export const useAgentSidebarState = () => {
 
   return {
     agentNodes,
-    collapsedWorkspaceKeySet: new Set(collapsedWorkspaceKeys),
     expandedTaskListAgentIdSet,
     patchTaskPreview,
     removeTaskPreview,
@@ -660,6 +638,5 @@ export const useAgentSidebarState = () => {
     expandTasks,
     collapseTasks,
     toggleAgentExpanded,
-    toggleWorkspaceCollapsed,
   };
 };

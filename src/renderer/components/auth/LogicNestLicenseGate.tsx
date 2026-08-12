@@ -9,7 +9,6 @@ import type {
 } from '../../../shared/license';
 import { LicensePhase } from '../../../shared/license';
 import { i18nService } from '../../services/i18n';
-import { formatUserFacingError } from '../../services/userFacingError';
 import WindowTitleBar from '../window/WindowTitleBar';
 import {
   CHINA_CALLING_CODE,
@@ -63,7 +62,7 @@ const LogicNestLicenseGate: React.FC<LogicNestLicenseGateProps> = ({ state, onSt
 
   const applyResult = async (result: LicenseActionResponse): Promise<void> => {
     if (isActionError(result)) {
-      setError(formatUserFacingError(result.error, { fallbackKey: 'logicnestLicenseError' }));
+      setError(result.error.message || i18nService.t('logicnestLicenseError'));
       return;
     }
     onState(result.state);

@@ -22,7 +22,6 @@ interface ScheduledTasksViewProps {
   isSidebarCollapsed?: boolean;
   onToggleSidebar?: () => void;
   onNewChat?: () => void;
-  onOpenMessagingSettings: () => void;
   updateBadge?: React.ReactNode;
 }
 
@@ -42,7 +41,6 @@ const ScheduledTasksView: React.FC<ScheduledTasksViewProps> = ({
   isSidebarCollapsed,
   onToggleSidebar,
   onNewChat,
-  onOpenMessagingSettings,
   updateBadge,
 }) => {
   const dispatch = useDispatch();
@@ -183,10 +181,6 @@ const ScheduledTasksView: React.FC<ScheduledTasksViewProps> = ({
     requestLeave(() => dispatch(setViewMode('detail')));
   }, [requestLeave, dispatch]);
 
-  const handleOpenMessagingSettings = useCallback(() => {
-    requestLeave(onOpenMessagingSettings);
-  }, [onOpenMessagingSettings, requestLeave]);
-
   const handleTabChange = (tab: TabType) => {
     reportScheduledTaskAction('tab_change', {
       source: 'scheduled_tasks_view',
@@ -206,6 +200,7 @@ const ScheduledTasksView: React.FC<ScheduledTasksViewProps> = ({
 
   return (
     <div
+      data-skin-management-page="true"
       className="relative z-10 flex flex-col bg-background h-full"
     >
       {/* Header */}
@@ -317,7 +312,6 @@ const ScheduledTasksView: React.FC<ScheduledTasksViewProps> = ({
                 mode="create"
                 initialTemplate={createTemplate}
                 onCancel={handleBackToList}
-                onOpenMessagingSettings={handleOpenMessagingSettings}
                 onSaved={newTaskId => {
                   setCreateTemplate(null);
                   if (newTaskId) {
@@ -335,7 +329,6 @@ const ScheduledTasksView: React.FC<ScheduledTasksViewProps> = ({
                 mode="edit"
                 task={selectedTask}
                 onCancel={handleEditCancel}
-                onOpenMessagingSettings={handleOpenMessagingSettings}
                 onSaved={() => dispatch(setViewMode('detail'))}
                 onDirtyChange={handleFormDirtyChange}
               />

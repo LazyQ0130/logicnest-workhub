@@ -17,6 +17,7 @@ import {
   selectCoworkConfig,
   selectCurrentSession,
   selectIsStreaming,
+  selectSessionNavigationTargetId,
 } from '../../store/selectors/coworkSelectors';
 import { addMessage, setCurrentSession, setDraftCollaborationMode, setDraftKitIds, setDraftSkillIds, setStreaming, updateSessionGoal, updateSessionStatus } from '../../store/slices/coworkSlice';
 import { clearActiveKits } from '../../store/slices/kitSlice';
@@ -38,6 +39,9 @@ import ComposeIcon from '../icons/ComposeIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import { PromptPanel, QuickActionBar } from '../quick-actions';
 import type { SettingsOpenOptions } from '../Settings';
+import HomeSkinEmblem from '../skin/HomeSkinEmblem';
+import SkinAmbientEffects from '../skin/SkinAmbientEffects';
+import SkinBackdrop, { SkinBackdropVariant } from '../skin/SkinBackdrop';
 import { useAgentSelectedModel } from './agentModelSelection';
 import { CoworkUiEvent } from './constants';
 import CoworkPromptInput, { type CoworkPromptInputRef } from './CoworkPromptInput';
@@ -105,6 +109,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
   const promptInputRef = useRef<CoworkPromptInputRef>(null);
 
   const currentSession = useSelector(selectCurrentSession);
+  const sessionNavigationTargetId = useSelector(selectSessionNavigationTargetId);
   const isStreaming = useSelector(selectIsStreaming);
   const currentSessionIdRef = useRef<string | null>(null);
 
@@ -123,6 +128,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
   const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
   const agents = useSelector((state: RootState) => state.agent.agents);
   const currentAgent = agents.find((agent) => agent.id === currentAgentId);
+  const shouldPresentConversation = Boolean(currentSession || sessionNavigationTargetId);
   const currentAgentWorkingDirectory = currentAgent?.workingDirectory?.trim() || config.workingDirectory || '';
   const currentAgentSelectedModel = useAgentSelectedModel(currentAgentId, currentAgent?.model ?? '');
   const homeDraftCollaborationMode = useSelector((state: RootState) => (
@@ -785,7 +791,14 @@ const CoworkView: React.FC<CoworkViewProps> = ({
   ) : null;
 
   return (
-    <div className="relative flex-1 flex flex-col bg-background h-full">
+    <div data-skin-cowork="true" className="relative flex-1 flex flex-col bg-background h-full">
+      <SkinBackdrop
+        variant={shouldPresentConversation
+          ? SkinBackdropVariant.Conversation
+          : SkinBackdropVariant.Home}
+      />
+      <SkinAmbientEffects visible={!shouldPresentConversation} />
+
       {currentSession ? (
         <div className="relative z-10 flex-1 flex flex-col h-full">
           {engineStatusBanner}
@@ -819,11 +832,8 @@ const CoworkView: React.FC<CoworkViewProps> = ({
                   the page starts scrolling on short windows. */}
               <div aria-hidden="true" className="w-full min-h-[56px] flex-[2_0_0px]" />
               {/* Welcome Section - staggered entrance animation */}
-              <div className="w-full max-w-3xl text-center">
-                <img
-                  src="logo.png"
-                  alt="逻栖工枢"
-                  draggable={false}
+              <div data-skin-home-copy="true" className="w-full max-w-3xl text-center">
+                <HomeSkinEmblem
                   className="mx-auto h-12 w-12 animate-fade-in-up"
                 />
                 <h2

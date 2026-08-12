@@ -1,11 +1,8 @@
 import {
   AuditOutlined,
-  AppstoreAddOutlined,
-  CloudUploadOutlined,
   ClusterOutlined,
   DashboardOutlined,
   KeyOutlined,
-  LockOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -29,7 +26,6 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { BRAND, APP_TITLE } from '../brand';
 import { useAuth } from '../auth/AuthContext';
 import { OPERATIONS_NAV_ITEMS, OPERATIONS_PAGE_TITLES } from '../operationsUi';
-import { ChangePasswordModal } from './ChangePasswordModal';
 
 const { Header, Sider, Content } = Layout;
 
@@ -63,8 +59,6 @@ const NAV_ICONS: Record<string, ReactNode> = {
   '/users': <TeamOutlined />,
   '/plans': <KeyOutlined />,
   '/devices': <ClusterOutlined />,
-  '/catalog': <AppstoreAddOutlined />,
-  '/desktop-releases': <CloudUploadOutlined />,
   '/audit-logs': <AuditOutlined />,
 };
 
@@ -75,7 +69,6 @@ const NAV_ITEMS = OPERATIONS_NAV_ITEMS.map((item) => ({
 
 export function AppShell() {
   const [collapsed, setCollapsed] = useState(false);
-  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { admin, logout, hasPermission } = useAuth();
@@ -115,11 +108,6 @@ export function AppShell() {
     },
     { type: 'divider' },
     {
-      key: 'change-password',
-      icon: <LockOutlined />,
-      label: '修改密码',
-    },
-    {
       key: 'logout',
       icon: <LogoutOutlined />,
       label: '退出登录',
@@ -127,18 +115,13 @@ export function AppShell() {
   ];
 
   const onUserMenuClick: MenuProps['onClick'] = async ({ key }) => {
-    if (key === 'change-password') {
-      setPasswordModalOpen(true);
-      return;
-    }
     if (key !== 'logout') return;
     await logout();
     navigate('/login', { replace: true });
   };
 
   return (
-    <>
-      <Layout className="app-layout">
+    <Layout className="app-layout">
       <Sider
         className="app-sider"
         theme="dark"
@@ -198,8 +181,6 @@ export function AppShell() {
           </Space>
         </footer>
       </Layout>
-      </Layout>
-      <ChangePasswordModal open={passwordModalOpen} onClose={() => setPasswordModalOpen(false)} />
-    </>
+    </Layout>
   );
 }

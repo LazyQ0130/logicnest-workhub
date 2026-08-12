@@ -75,23 +75,3 @@ describe('ScheduledTaskService startup state', () => {
     ]);
   });
 });
-
-describe('ScheduledTaskService notification channels', () => {
-  test('returns an empty list only when the channel query succeeds', async () => {
-    stubScheduledTaskApi({
-      listChannels: vi.fn(async () => ({ success: true, channels: [] })),
-    });
-    const service = new ScheduledTaskService();
-
-    await expect(service.listChannels()).resolves.toEqual([]);
-  });
-
-  test('surfaces channel query failures instead of presenting them as an empty list', async () => {
-    stubScheduledTaskApi({
-      listChannels: vi.fn(async () => ({ success: false, error: 'gateway unavailable' })),
-    });
-    const service = new ScheduledTaskService();
-
-    await expect(service.listChannels()).rejects.toThrow('gateway unavailable');
-  });
-});

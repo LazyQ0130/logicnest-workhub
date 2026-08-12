@@ -40,8 +40,6 @@ import {
 const DINGTALK_OPENCLAW_CHANNEL = 'dingtalk-connector';
 const WEIXIN_OPENCLAW_CHANNEL = 'openclaw-weixin';
 const WEIXIN_ALREADY_CONNECTED_MESSAGE = '已连接过此 OpenClaw';
-const WEIXIN_QR_LOGIN_WAIT_TIMEOUT_MS = 480_000;
-const WEIXIN_QR_LOGIN_REQUEST_TIMEOUT_MS = WEIXIN_QR_LOGIN_WAIT_TIMEOUT_MS + 30_000;
 
 const CONNECTIVITY_TIMEOUT_MS = 10_000;
 const INBOUND_ACTIVITY_WARN_AFTER_MS = 2 * 60 * 1000;
@@ -50,7 +48,7 @@ type GatewayClientLike = {
   request: <T = Record<string, unknown>>(
     method: string,
     params?: unknown,
-    opts?: { expectFinal?: boolean; timeoutMs?: number | null },
+    opts?: { expectFinal?: boolean },
   ) => Promise<T>;
 };
 
@@ -1711,13 +1709,7 @@ export class IMGatewayManager extends EventEmitter {
         'web.login.wait',
         // OpenClaw's current web.login.wait schema has no sessionKey field, so
         // the QR flow still has to pass the plugin session key through accountId.
-        {
-          timeoutMs: WEIXIN_QR_LOGIN_WAIT_TIMEOUT_MS,
-          ...(sessionKey ? { accountId: sessionKey } : {}),
-        },
-        // GatewayClient defaults to a 30-second RPC timeout. Keep the client
-        // alive slightly longer than the plugin's QR polling window.
-        { timeoutMs: WEIXIN_QR_LOGIN_REQUEST_TIMEOUT_MS },
+        { timeoutMs: 480000, ...(sessionKey ? { accountId: sessionKey } : {}) },
       );
       const alreadyConnected = result.alreadyConnected === true
         || isWeixinAlreadyConnectedMessage(result.message);
@@ -1751,14 +1743,11 @@ export class IMGatewayManager extends EventEmitter {
       await this.releaseWeixinLoginProvider?.(result.connected || alreadyConnected);
       return finalResult;
     } catch (err) {
-      const errorMessage = err instanceof Error
-        ? `${err.name}: ${err.message}`
-        : String(err);
-      console.error(`[IMGatewayManager] Weixin QR login wait failed: ${errorMessage}`, err);
+      console.error('[IMGatewayManager] Weixin QR login wait failed:', err);
       await this.releaseWeixinLoginProvider?.(false).catch(releaseError => {
         console.error('[IMGatewayManager] Failed to release Weixin login provider:', releaseError);
       });
-      return { connected: false, message: `Login failed: ${errorMessage}` };
+      return { connected: false, message: `Login failed: ${String(err)}` };
     }
   }
 

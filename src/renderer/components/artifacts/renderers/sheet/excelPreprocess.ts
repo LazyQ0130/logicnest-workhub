@@ -2,15 +2,6 @@ type XlsxModule = typeof import('xlsx');
 
 const CSV_TSV_EXTENSIONS = new Set(['.csv', '.tsv']);
 
-export const MAX_SPREADSHEET_PREVIEW_BYTES = 100 * 1024 * 1024;
-export const MAX_SPREADSHEET_PREVIEW_ROWS = 10_000;
-
-export function isSpreadsheetPreviewSizeAllowed(byteLength: number): boolean {
-  return Number.isSafeInteger(byteLength)
-    && byteLength >= 0
-    && byteLength <= MAX_SPREADSHEET_PREVIEW_BYTES;
-}
-
 export function getSheetFileName(fileName: string | undefined, filePath: string | undefined): string {
   const source = fileName || filePath || 'spreadsheet.xlsx';
   const withoutQuery = source.split(/[?#]/)[0];

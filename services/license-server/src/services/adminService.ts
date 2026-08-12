@@ -5,7 +5,6 @@ import type { FastifyRequest } from 'fastify';
 import { writeAudit } from '../audit.js';
 import type { AppConfig } from '../config.js';
 import { conflict, forbidden, notFound, unauthorized } from '../errors.js';
-import { getLicenseMode, LICENSE_POLICY_ID, LicenseMode } from '../licensePolicy.js';
 import {
   hmacDigest,
   keysToCsv,
@@ -131,36 +130,6 @@ export class AdminService {
     return { registeredUsers, activeEntitlements, newUsersToday, onlineDevices, expiringSoon };
   }
 
-  async getLicensePolicy() {
-    const policy = await this.db.licensePolicy.upsert({
-      where: { id: LICENSE_POLICY_ID },
-      update: {},
-      create: { id: LICENSE_POLICY_ID, mode: LicenseMode.SingleDevice },
-    });
-    return { mode: policy.mode };
-  }
-
-  async updateLicensePolicy(mode: LicenseMode, request: FastifyRequest, actor: Admin) {
-    if (mode === LicenseMode.SingleDevice) {
-      const users = await this.db.user.findMany({
-        where: { devices: { some: { status: { in: ['ACTIVE', 'SUSPENDED'] } } } },
-        select: { devices: { where: { status: { in: ['ACTIVE', 'SUSPENDED'] } }, select: { id: true }, take: 2 } },
-      });
-      if (users.some((user) => user.devices.length > 1)) {
-        throw conflict('LICENSE_POLICY_SWITCH_CONFLICT', 'Unbind extra devices before switching to single-device mode');
-      }
-    }
-    const policy = await this.db.licensePolicy.upsert({
-      where: { id: LICENSE_POLICY_ID },
-      update: { mode },
-      create: { id: LICENSE_POLICY_ID, mode },
-    });
-    await writeAudit(this.db, this.config, request, {
-      actorType: 'ADMIN', actorId: actor.id, action: 'license.policy.update', targetType: 'license_policy', targetId: LICENSE_POLICY_ID, result: 'SUCCESS', metadata: { mode },
-    });
-    return { mode: policy.mode };
-  }
-
   async listUsers(query: { page: number; pageSize: number; search?: string; status?: 'ACTIVE' | 'SUSPENDED' }) {
     const where: Prisma.UserWhereInput = {
       ...(query.status ? { status: query.status } : {}),
@@ -254,8 +223,8 @@ export class AdminService {
 
   async listKeys(query: { page: number; pageSize: number; status?: 'UNUSED' | 'REDEEMED' | 'REVOKED' | 'EXPIRED'; planId?: string; batchId?: string; search?: string }) {
     const where: Prisma.LicenseKeyWhereInput = { ...(query.status ? { status: query.status } : {}), ...(query.planId ? { planId: query.planId } : {}), ...(query.batchId ? { batchId: query.batchId } : {}), ...(query.search ? { lastFour: { contains: query.search.toUpperCase().slice(-4) } } : {}) };
-    const [total, items] = await Promise.all([this.db.licenseKey.count({ where }), this.db.licenseKey.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (query.page - 1) * query.pageSize, take: query.pageSize, include: { plan: true, batch: true, redeemedByDevice: { select: { status: true } } } })]);
-    return { items: items.map((key) => ({ id: key.id, lastFour: key.lastFour, status: key.status, reusableAfterUnbind: key.status === 'REDEEMED' && key.redeemedByDevice?.status === 'UNBOUND', plan: { id: key.plan.id, code: key.plan.code, name: key.plan.name }, batchId: key.batchId, expiresAt: key.expiresAt, redeemedAt: key.redeemedAt, redeemedByUserId: key.redeemedByUserId, redeemedByDeviceId: key.redeemedByDeviceId, createdAt: key.createdAt })), total, page: query.page, pageSize: query.pageSize };
+    const [total, items] = await Promise.all([this.db.licenseKey.count({ where }), this.db.licenseKey.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (query.page - 1) * query.pageSize, take: query.pageSize, include: { plan: true, batch: true } })]);
+    return { items: items.map((key) => ({ id: key.id, lastFour: key.lastFour, status: key.status, plan: { id: key.plan.id, code: key.plan.code, name: key.plan.name }, batchId: key.batchId, expiresAt: key.expiresAt, redeemedAt: key.redeemedAt, redeemedByUserId: key.redeemedByUserId, redeemedByDeviceId: key.redeemedByDeviceId, createdAt: key.createdAt })), total, page: query.page, pageSize: query.pageSize };
   }
 
   async revokeKey(id: string, reason: string | undefined, request: FastifyRequest, actor: Admin) {
@@ -286,8 +255,8 @@ export class AdminService {
         ],
       } : {}),
     };
-    const [total, items] = await Promise.all([this.db.device.count({ where }), this.db.device.findMany({ where, orderBy: { lastSeenAt: 'desc' }, skip: (query.page - 1) * query.pageSize, take: query.pageSize, include: { user: { select: { id: true, uid: true, phoneNormalized: true } }, entitlements: { orderBy: { expiresAt: 'desc' }, take: 1 } } })]);
-    return { items: items.map((device) => ({ id: device.id, fingerprintHint: device.fingerprintHint, status: device.status, user: device.user ? { id: device.user.id, uid: device.user.uid, phone: device.user.phoneNormalized } : null, boundAt: device.boundAt, unboundAt: device.unboundAt, lastSeenAt: device.lastSeenAt, clientVersion: device.clientVersion, entitlementExpiresAt: device.entitlements[0]?.expiresAt ?? null })), total, page: query.page, pageSize: query.pageSize };
+    const [total, items] = await Promise.all([this.db.device.count({ where }), this.db.device.findMany({ where, orderBy: { lastSeenAt: 'desc' }, skip: (query.page - 1) * query.pageSize, take: query.pageSize, include: { user: { select: { id: true, uid: true, phoneNormalized: true } }, entitlement: true } })]);
+    return { items: items.map((device) => ({ id: device.id, fingerprintHint: device.fingerprintHint, status: device.status, user: device.user ? { id: device.user.id, uid: device.user.uid, phone: device.user.phoneNormalized } : null, boundAt: device.boundAt, unboundAt: device.unboundAt, lastSeenAt: device.lastSeenAt, clientVersion: device.clientVersion, entitlementExpiresAt: device.entitlement?.expiresAt ?? null })), total, page: query.page, pageSize: query.pageSize };
   }
 
   async setDeviceStatus(id: string, status: 'ACTIVE' | 'SUSPENDED', reason: string | undefined, request: FastifyRequest, actor: Admin) {
@@ -300,13 +269,10 @@ export class AdminService {
   async unbindDevice(id: string, reason: string | undefined, request: FastifyRequest, actor: Admin) {
     const device = await this.db.device.findUnique({ where: { id } });
     if (!device) throw notFound('DEVICE_NOT_FOUND', 'Device not found');
-    const mode = await getLicenseMode(this.db);
     await this.db.$transaction(async (tx) => {
       await tx.device.update({ where: { id }, data: { userId: null, status: 'UNBOUND', unboundAt: new Date(), tokenVersion: { increment: 1 } } });
       await tx.refreshToken.updateMany({ where: { deviceId: id, revokedAt: null }, data: { revokedAt: new Date() } });
-      if (mode === LicenseMode.SingleDevice) {
-        await tx.entitlement.updateMany({ where: { deviceId: id, status: 'ACTIVE' }, data: { status: 'REVOKED', revokedAt: new Date(), reason: reason ?? 'device unbound', version: { increment: 1 } } });
-      }
+      await tx.entitlement.updateMany({ where: { deviceId: id, status: 'ACTIVE' }, data: { status: 'REVOKED', revokedAt: new Date(), reason: reason ?? 'device unbound', version: { increment: 1 } } });
       await writeAudit(tx, this.config, request, { actorType: 'ADMIN', actorId: actor.id, action: 'device.unbind', targetType: 'device', targetId: id, result: 'SUCCESS' });
     });
     return { id, status: 'UNBOUND' as const };

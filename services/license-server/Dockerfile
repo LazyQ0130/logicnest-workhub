@@ -17,8 +17,6 @@ ENV NODE_ENV=production
 WORKDIR /app
 RUN groupadd --system --gid 10001 logicnest \
   && useradd --system --uid 10001 --gid logicnest --home-dir /app --shell /usr/sbin/nologin logicnest
-RUN mkdir -p /var/lib/logicnest/catalog \
-  && chown -R logicnest:logicnest /var/lib/logicnest
 COPY --from=build --chown=logicnest:logicnest /app/package.json ./package.json
 COPY --from=build --chown=logicnest:logicnest /app/node_modules ./node_modules
 COPY --from=build --chown=logicnest:logicnest /app/dist ./dist

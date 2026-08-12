@@ -4216,6 +4216,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       imageAttachments: options.imageAttachments,
       agentId: options.agentId,
       mediaSelection: options.mediaSelection,
+      workflowKind: options.workflowKind,
       mediaReferences: options.mediaReferences,
       selectedTextSnippets: options.selectedTextSnippets,
       browserAnnotations: options.browserAnnotations,
@@ -4235,6 +4236,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       resolvedKitCapabilities: options.resolvedKitCapabilities,
       imageAttachments: options.imageAttachments,
       mediaSelection: options.mediaSelection,
+      workflowKind: options.workflowKind,
       mediaReferences: options.mediaReferences,
       selectedTextSnippets: options.selectedTextSnippets,
       browserAnnotations: options.browserAnnotations,
@@ -5054,6 +5056,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       imageAttachments?: CoworkImageAttachment[];
       agentId?: string;
       mediaSelection?: CoworkMediaSelection;
+      workflowKind?: CoworkStartOptions['workflowKind'];
       mediaReferences?: CoworkMediaAttachmentRef[];
       selectedTextSnippets?: CoworkSelectedTextSnippet[];
       browserAnnotations?: CoworkBrowserAnnotationMessageBatch[];
@@ -5262,6 +5265,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       buildMediaGenerationTurnInstruction(
         options.mediaSelection,
         hasMediaSkillActive,
+        options.workflowKind,
       ),
     ].filter(p => p?.trim()).join('\n\n');
     const planMode = isPlanModeSystemPrompt(outboundSystemPrompt);
@@ -5719,7 +5723,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     const client = new GatewayClient({
       url: connection.url,
       token: connection.token,
-      clientDisplayName: 'LogicNest WorkHub',
+      clientDisplayName: 'LobsterAI',
       clientVersion: app.getVersion(),
       mode: 'backend',
       caps: [OPENCLAW_GATEWAY_TOOL_EVENTS_CAP],

@@ -530,7 +530,6 @@ export interface CoworkSessionSummary {
   status: CoworkSessionStatus;
   pinned: boolean;
   pinOrder?: number | null;
-  cwd: string;
   agentId: string;
   parentSessionId?: string | null;
   forkedAt?: number | null;
@@ -725,7 +724,6 @@ interface CoworkSessionSummaryRow {
   status: string;
   pinned: number | null;
   pin_order: number | null;
-  cwd: string;
   agent_id: string | null;
   parent_session_id?: string | null;
   forked_at?: number | null;
@@ -820,7 +818,6 @@ export class CoworkStore {
       status: row.status as CoworkSessionStatus,
       pinned: Boolean(row.pinned),
       pinOrder: row.pin_order ?? null,
-      cwd: row.cwd || '',
       agentId: row.agent_id || 'main',
       parentSessionId: row.parent_session_id ?? null,
       forkedAt: row.forked_at ?? null,
@@ -1538,7 +1535,7 @@ export class CoworkStore {
     if (agentId) {
       rows = this.getAll<CoworkSessionSummaryRow>(
         `
-        SELECT id, title, status, pinned, pin_order, cwd, agent_id,
+        SELECT id, title, status, pinned, pin_order, agent_id,
                parent_session_id, forked_at, fork_mode,
                goal_json,
                created_at, updated_at
@@ -1555,7 +1552,7 @@ export class CoworkStore {
     } else {
       rows = this.getAll<CoworkSessionSummaryRow>(
         `
-        SELECT id, title, status, pinned, pin_order, cwd, agent_id,
+        SELECT id, title, status, pinned, pin_order, agent_id,
                parent_session_id, forked_at, fork_mode,
                goal_json,
                created_at, updated_at
@@ -1616,7 +1613,7 @@ export class CoworkStore {
     if (options.agentId) {
       rows = this.getAll<CoworkSessionSummaryRow>(
         `
-        SELECT id, title, status, pinned, pin_order, cwd, agent_id,
+        SELECT id, title, status, pinned, pin_order, agent_id,
                parent_session_id, forked_at, fork_mode,
                goal_json,
                created_at, updated_at
@@ -1634,7 +1631,7 @@ export class CoworkStore {
     } else {
       rows = this.getAll<CoworkSessionSummaryRow>(
         `
-        SELECT id, title, status, pinned, pin_order, cwd, agent_id,
+        SELECT id, title, status, pinned, pin_order, agent_id,
                parent_session_id, forked_at, fork_mode,
                goal_json,
                created_at, updated_at

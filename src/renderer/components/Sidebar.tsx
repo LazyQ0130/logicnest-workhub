@@ -186,10 +186,12 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
+  const [agentScrollEdges, setAgentScrollEdges] = useState({ top: false, bottom: false });
   const [hasRunningMeeting, setHasRunningMeeting] = useState(false);
   const isResizingRef = useRef(false);
   const resizeStartXRef = useRef(0);
   const resizeStartWidthRef = useRef(DEFAULT_SIDEBAR_WIDTH);
+  const agentScrollContainerRef = useRef<HTMLDivElement>(null);
   const isWindows = window.electron.platform === 'win32';
   const showHeaderRow = !isWindows;
   const batchSelectableKeySet = useMemo(
@@ -340,6 +342,32 @@ const Sidebar: React.FC<SidebarProps> = ({
       return next.size === previous.size ? previous : next;
     });
   }, [batchAgentId]);
+
+  const updateAgentScrollEdges = useCallback((element: HTMLDivElement | null) => {
+    if (!element) {
+      setAgentScrollEdges((previousEdges) => (
+        previousEdges.top || previousEdges.bottom ? { top: false, bottom: false } : previousEdges
+      ));
+      return;
+    }
+
+    const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+    const nextEdges = {
+      top: element.scrollTop > 1,
+      bottom: maxScrollTop - element.scrollTop > 1,
+    };
+
+    setAgentScrollEdges((previousEdges) => {
+      if (previousEdges.top === nextEdges.top && previousEdges.bottom === nextEdges.bottom) {
+        return previousEdges;
+      }
+      return nextEdges;
+    });
+  }, []);
+
+  const handleAgentScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    updateAgentScrollEdges(event.currentTarget);
+  }, [updateAgentScrollEdges]);
 
   const handleToggleSelection = useCallback((selectionKey: string, agentId: string) => {
     if (batchAgentId && normalizeAgentId(agentId) !== batchAgentId) return;
@@ -502,8 +530,26 @@ const Sidebar: React.FC<SidebarProps> = ({
     };
   }, []);
 
+  useEffect(() => {
+    const element = agentScrollContainerRef.current;
+    if (!element) return;
+
+    updateAgentScrollEdges(element);
+
+    const resizeObserver = new ResizeObserver(() => updateAgentScrollEdges(element));
+    resizeObserver.observe(element);
+    if (element.firstElementChild) {
+      resizeObserver.observe(element.firstElementChild);
+    }
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [updateAgentScrollEdges]);
+
   return (
     <aside
+      data-skin-sidebar="true"
       className={`relative shrink-0 overflow-hidden bg-surface-raised ${
         isResizing ? '' : 'sidebar-transition'
       }`}
@@ -626,7 +672,11 @@ const Sidebar: React.FC<SidebarProps> = ({
             );
           })}
         </div>
-        <div className="scrollbar-hidden h-[calc(100%_-_44px)] overflow-y-auto px-2.5 pb-10">
+        <div
+          ref={agentScrollContainerRef}
+          className="scrollbar-hidden h-[calc(100%_-_44px)] overflow-y-auto px-2.5 pb-10"
+          onScroll={handleAgentScroll}
+        >
           {activeDestination === SidebarDestination.TaskHistory
             || activeDestination === SidebarDestination.Assistants ? (
               <MyAgentSidebarTree
@@ -670,6 +720,16 @@ const Sidebar: React.FC<SidebarProps> = ({
               </p>
             )}
         </div>
+        <div
+          className={`pointer-events-none absolute inset-x-0 top-0 z-10 h-24 bg-gradient-to-b from-surface-raised to-transparent transition-opacity duration-150 ${
+            agentScrollEdges.top ? 'opacity-100' : 'opacity-0'
+          }`}
+        />
+        <div
+          className={`pointer-events-none absolute inset-x-0 top-[68px] z-10 h-3 bg-gradient-to-b from-surface-raised to-transparent transition-opacity duration-150 ${
+            agentScrollEdges.top ? 'opacity-40' : 'opacity-0'
+          }`}
+        />
       </div>
       {!isCollapsed && (
         <div

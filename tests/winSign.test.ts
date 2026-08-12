@@ -11,16 +11,7 @@ const require = createRequire(import.meta.url);
 const { signFile, readPeCertTable, loadDotEnv, _resetForTests } = require('../scripts/win-sign.cjs');
 
 const PE_BODY_MARKER = 'FAKE-PE-BODY-FOR-WIN-SIGN-TEST';
-const SIGN_CREDENTIAL_ENV_KEYS = [
-  'YD_SIGN_SERVICE_URL',
-  'YD_SIGN_APP_KEY',
-  'YD_SIGN_APP_SECRET',
-  'YD_SIGN_USERNAME',
-] as const;
-const SIGN_ENV_KEYS = [
-  ...SIGN_CREDENTIAL_ENV_KEYS,
-  'LOGICNEST_RELEASE_BUILD',
-] as const;
+const SIGN_ENV_KEYS = ['YD_SIGN_SERVICE_URL', 'YD_SIGN_APP_KEY', 'YD_SIGN_APP_SECRET', 'YD_SIGN_USERNAME'] as const;
 
 /** Build a minimal but structurally valid PE32+ image. */
 function buildMinimalPe(options: { signed: boolean }): Buffer {
@@ -220,7 +211,7 @@ describe('win-sign hook', () => {
   test('skips when any credential (incl. service URL) is missing and leaves the file untouched', async () => {
     const before = fs.readFileSync(targetPath);
 
-    for (const key of SIGN_CREDENTIAL_ENV_KEYS) {
+    for (const key of SIGN_ENV_KEYS) {
       const saved = process.env[key];
       delete process.env[key];
 
@@ -231,14 +222,6 @@ describe('win-sign hook', () => {
     }
 
     expect(fs.readFileSync(targetPath).equals(before)).toBe(true);
-    expect(server.requests).toHaveLength(0);
-  });
-
-  test('fails closed when signing credentials are missing for a release build', async () => {
-    process.env.LOGICNEST_RELEASE_BUILD = '1';
-    delete process.env.YD_SIGN_APP_SECRET;
-
-    await expect(signFile(targetPath)).rejects.toThrow('release build requires');
     expect(server.requests).toHaveLength(0);
   });
 

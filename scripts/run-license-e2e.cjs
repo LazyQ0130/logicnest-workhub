@@ -37,7 +37,6 @@ async function main() {
   state.QA_LICENSE_KEY = '';
   state.QA_LICENSE_KEY_2 = '';
   state.QA_LICENSE_KEY_3 = '';
-  state.QA_LICENSE_KEY_4 = '';
   writeState(state);
 
   const clientBase = `http://127.0.0.1:${state.LICENSE_SERVER_PORT}/api/v1`;
@@ -195,7 +194,7 @@ async function main() {
     await heartbeat(clientBase, primaryLogin.accessToken, state.QA_DEVICE_FINGERPRINT_A);
   });
 
-  await step('device unbind allows the same account to reuse its old card', async () => {
+  await step('device unbind requires a new card and does not bypass backend state', async () => {
     await superAdmin.request(`/devices/${primaryDevice.id}/unbind`, { method: 'POST', body: { reason: 'qa-e2e' } });
     await expectAnyApiError(`${clientBase}/license/heartbeat`, {
       method: 'POST', accessToken: primaryLogin.accessToken,
@@ -203,7 +202,9 @@ async function main() {
     }, [401, 403]);
     primaryLogin = await login(clientBase, state.QA_PRIMARY_PHONE, state.QA_USER_PASSWORD, state.QA_DEVICE_FINGERPRINT_A);
     if (primaryLogin.device !== null || primaryLogin.entitlement?.status === 'ACTIVE') throw qaError('UNBIND_BYPASSED');
-    primaryLogin = await redeem(clientBase, primaryLogin.accessToken, state.QA_LICENSE_KEY, state.QA_DEVICE_FINGERPRINT_A);
+    const generated = await generateDayKey(superAdmin, dayPlan.id, state, 'QA_LICENSE_KEY_2');
+    firstKeyRecord = generated.record;
+    primaryLogin = await redeem(clientBase, primaryLogin.accessToken, state.QA_LICENSE_KEY_2, state.QA_DEVICE_FINGERPRINT_A);
   });
 
   await step('user suspend restore and mandatory reauthentication', async () => {
@@ -280,21 +281,6 @@ async function main() {
       headers: { 'x-logicnest-qa-fault': '500' },
       body: { phone: state.QA_PRIMARY_PHONE, password: state.QA_USER_PASSWORD, confirmPassword: state.QA_USER_PASSWORD },
     }, 500, 'INTERNAL_ERROR');
-  });
-
-  await step('multi-device mode keeps one active login', async () => {
-    await superAdmin.request('/license-policy', { method: 'PATCH', body: { mode: 'MULTI_DEVICE_SINGLE_SESSION' } });
-    await generateDayKey(superAdmin, dayPlan.id, state, 'QA_LICENSE_KEY_4');
-    primaryLogin = await redeem(clientBase, primaryLogin.accessToken, state.QA_LICENSE_KEY_4, state.QA_DEVICE_FINGERPRINT_A);
-    const secondDeviceFingerprint = randomBytes(32).toString('hex');
-    const secondDeviceLogin = await login(clientBase, state.QA_PRIMARY_PHONE, state.QA_USER_PASSWORD, secondDeviceFingerprint);
-    if (secondDeviceLogin.device?.status !== 'ACTIVE') throw qaError('MULTI_DEVICE_NOT_BOUND');
-    await expectAnyApiError(`${clientBase}/license/heartbeat`, {
-      method: 'POST', accessToken: primaryLogin.accessToken,
-      body: { deviceFingerprint: state.QA_DEVICE_FINGERPRINT_A, clientVersion: 'qa-e2e' },
-    }, [401, 403]);
-    await superAdmin.request(`/devices/${secondDeviceLogin.device.id}/unbind`, { method: 'POST', body: { reason: 'qa-multi-mode-cleanup' } });
-    await superAdmin.request('/license-policy', { method: 'PATCH', body: { mode: 'SINGLE_DEVICE' } });
   });
 
   await step('prepare isolated desktop activation account', async () => {

@@ -31,6 +31,7 @@ import {
 import { type AppConfig, defaultConfig, FontPreferences, getProviderDisplayName, isCustomProvider, normalizeFontPreference, ShortcutAction, type ShortcutConfig } from '../config';
 import { type SettingsTabId } from '../config/brandUi';
 import { APP_ID, EXPORT_FORMAT_TYPE, EXPORT_PASSWORD } from '../constants/app';
+import { useSkin } from '../providers/SkinProvider';
 import { apiService } from '../services/api';
 import { configService } from '../services/config';
 import { coworkService } from '../services/cowork';
@@ -126,6 +127,7 @@ import {
 } from './settings/settingsInformationArchitecture';
 import { requestSettingsNavigation } from './settings/settingsNavigationGuard';
 import EmailSkillConfig from './skills/EmailSkillConfig';
+import SkinPresentationScope from './skin/SkinPresentationScope';
 import ThemedSelect from './ui/ThemedSelect';
 
 type TabType = SettingsTabId;
@@ -899,6 +901,7 @@ export type SettingsOpenOptions = {
 interface SettingsProps extends SettingsOpenOptions {
   onClose: () => void;
   licenseUserId?: string;
+  onStartAiSkin?: (text: string, kitId: string) => void;
   initialTabRequestId?: number;
   onUpdateFound?: (info: AppUpdateInfo) => void;
   enterpriseConfig?: {
@@ -1064,6 +1067,7 @@ const isTextEditingActive = () => {
 const Settings: React.FC<SettingsProps> = ({
   onClose,
   licenseUserId,
+  onStartAiSkin,
   initialTab,
   initialTabRequestId,
   notice,
@@ -1073,6 +1077,12 @@ const Settings: React.FC<SettingsProps> = ({
   enterpriseConfig,
 }) => {
   const dispatch = useDispatch();
+  const {
+    activeSkin,
+    isAppearanceChanging,
+    selectThemeById,
+    selectThemeMode,
+  } = useSkin();
   // 状态
   const [activeTab, setActiveTab] = useState<TabType>(initialTab ?? 'general');
   const [settingsView, setSettingsView] = useState<SettingsView>(
@@ -1085,7 +1095,6 @@ const Settings: React.FC<SettingsProps> = ({
   const [isPersonalizationLoading, setIsPersonalizationLoading] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
   const [themeId, setThemeId] = useState<string>(themeService.getDefaultThemeId());
-  const [isThemeChanging, setIsThemeChanging] = useState(false);
   const [uiFontSize, setUiFontSize] = useState<number>(FontPreferences.UiFontSizeDefault);
   const [codeFontSize, setCodeFontSize] = useState<number>(FontPreferences.CodeFontSizeDefault);
   const [language, setLanguage] = useState<LanguageType>('zh');
@@ -2974,7 +2983,7 @@ const Settings: React.FC<SettingsProps> = ({
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (isSaving || isThemeChanging) return;
+    if (isSaving || isAppearanceChanging) return;
     setIsSaving(true);
     setError(null);
 
@@ -4179,33 +4188,27 @@ const Settings: React.FC<SettingsProps> = ({
     mode: 'light' | 'dark' | 'system',
   ) => {
     setError(null);
-    setIsThemeChanging(true);
     try {
-      const selection = await themeService.selectDefaultThemeMode(mode);
+      const selection = await selectThemeMode(mode);
       setTheme(selection.mode);
       setThemeId(selection.themeId);
     } catch (selectionError) {
       console.error('[Settings] Failed to select the default theme mode', selectionError);
       setError(i18nService.t('themeApplyFailed'));
-    } finally {
-      setIsThemeChanging(false);
     }
-  }, []);
+  }, [selectThemeMode]);
 
   const handleThemeIdSelection = useCallback(async (nextThemeId: string) => {
     setError(null);
-    setIsThemeChanging(true);
     try {
-      const selection = await themeService.selectDefaultThemeById(nextThemeId);
+      const selection = await selectThemeById(nextThemeId);
       setTheme(selection.mode);
       setThemeId(selection.themeId);
     } catch (selectionError) {
       console.error('[Settings] Failed to select the default color theme', selectionError);
       setError(i18nService.t('themeApplyFailed'));
-    } finally {
-      setIsThemeChanging(false);
     }
-  }, []);
+  }, [selectThemeById]);
 
   const renderTabContent = () => {
     switch(activeTab) {
@@ -4477,13 +4480,15 @@ const Settings: React.FC<SettingsProps> = ({
           <AppearanceSettings
             theme={theme}
             themeId={themeId}
-            isChanging={isThemeChanging}
+            hasActiveSkin={Boolean(activeSkin)}
+            isChanging={isAppearanceChanging}
             uiFontSize={uiFontSize}
             codeFontSize={codeFontSize}
             onThemeModeChange={handleThemeModeSelection}
             onThemeIdChange={handleThemeIdSelection}
             onUiFontSizeChange={handleUiFontSizeChange}
             onCodeFontSizeChange={handleCodeFontSizeChange}
+            onStartAiSkin={onStartAiSkin}
           />
         );
 
@@ -5376,7 +5381,7 @@ const Settings: React.FC<SettingsProps> = ({
   };
 
   const isDetailView = settingsView === SettingsView.Detail && Boolean(activeSettingsModule);
-  const isSettingsSaveDisabled = isSaving || isThemeChanging || isPersonalizationLoading;
+  const isSettingsSaveDisabled = isSaving || isAppearanceChanging || isPersonalizationLoading;
 
   return (
     <Modal
@@ -5385,7 +5390,9 @@ const Settings: React.FC<SettingsProps> = ({
       overlayClassName="non-draggable fixed inset-0 z-[60] bg-background"
       className="non-draggable h-full w-full min-w-0"
     >
-      <div
+      <SkinPresentationScope
+        enabled
+        data-skin-settings="true"
         className="relative flex h-full w-full min-w-0 flex-col overflow-hidden bg-background text-foreground"
         onClick={handleSettingsClick}
       >
@@ -5789,7 +5796,7 @@ const Settings: React.FC<SettingsProps> = ({
             </div>
           )}
 
-      </div>
+      </SkinPresentationScope>
     </Modal>
   );
 };

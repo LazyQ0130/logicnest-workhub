@@ -88,6 +88,15 @@ import {
   type SiteUpdateAccessStatusInput,
   type SiteUpdateTitleInput,
 } from '../shared/site/constants';
+import { SkinIpc } from '../shared/skin/constants';
+import type {
+  SkinApplyResponse,
+  SkinBindThemeResponse,
+  SkinDeactivateResponse,
+  SkinDeleteResponse,
+  SkinGetActiveResponse,
+  SkinListResponse,
+} from '../shared/skin/types';
 import { OpenClawSessionIpc } from './openclawSession/constants';
 import { OpenClawSessionPolicyIpc } from './openclawSessionPolicy/constants';
 
@@ -184,6 +193,21 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke('kits:install', params),
     uninstall: (kitId: string) => ipcRenderer.invoke('kits:uninstall', kitId),
     listInstalled: () => ipcRenderer.invoke('kits:listInstalled'),
+  },
+  skin: {
+    getActive: (): Promise<SkinGetActiveResponse> => ipcRenderer.invoke(SkinIpc.GetActive),
+    list: (): Promise<SkinListResponse> => ipcRenderer.invoke(SkinIpc.List),
+    apply: (skinId: string, boundThemeId?: string): Promise<SkinApplyResponse> =>
+      ipcRenderer.invoke(SkinIpc.Apply, skinId, boundThemeId),
+    bindTheme: (skinId: string, themeId: string): Promise<SkinBindThemeResponse> =>
+      ipcRenderer.invoke(SkinIpc.BindTheme, skinId, themeId),
+    deactivate: (): Promise<SkinDeactivateResponse> => ipcRenderer.invoke(SkinIpc.Deactivate),
+    delete: (skinId: string): Promise<SkinDeleteResponse> => ipcRenderer.invoke(SkinIpc.Delete, skinId),
+    onChanged: (callback: () => void) => {
+      const handler = () => callback();
+      ipcRenderer.on(SkinIpc.Changed, handler);
+      return () => ipcRenderer.removeListener(SkinIpc.Changed, handler);
+    },
   },
   permissions: {
     checkCalendar: () => ipcRenderer.invoke(PermissionIpcChannel.CheckCalendar),

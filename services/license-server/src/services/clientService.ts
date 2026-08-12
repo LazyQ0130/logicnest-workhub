@@ -1,13 +1,10 @@
-import type { Device, Entitlement, PrismaClient, User } from '@prisma/client';
 import argon2 from 'argon2';
 import type { FastifyRequest } from 'fastify';
-
-import { writeAudit } from '../audit.js';
+import type { Prisma, PrismaClient, User, Device, Entitlement } from '@prisma/client';
 import type { AppConfig } from '../config.js';
+import { writeAudit } from '../audit.js';
 import { conflict, forbidden, notFound, unauthorized } from '../errors.js';
-import { getLicenseMode, LicenseMode } from '../licensePolicy.js';
 import {
-  type AccessClaims,
   generateLicenseKey,
   hmacDigest,
   issueAccessToken,
@@ -19,6 +16,7 @@ import {
   phoneLast4,
   randomToken,
   validatePassword,
+  type AccessClaims,
 } from '../security.js';
 
 const ARGON2_OPTIONS = {
@@ -30,13 +28,7 @@ const ARGON2_OPTIONS = {
 
 type ClientRequest = FastifyRequest;
 
-export type RegisterInput = {
-  phone: string;
-  password: string;
-  confirmPassword: string;
-  deviceFingerprint?: string;
-  clientVersion?: string;
-};
+export type RegisterInput = { phone: string; password: string; confirmPassword: string };
 export type LoginInput = { phone: string; password: string; deviceFingerprint?: string; clientVersion?: string };
 export type RedeemInput = { licenseKey: string; deviceFingerprint: string; clientVersion?: string };
 export type HeartbeatInput = { deviceFingerprint: string; clientVersion?: string };
@@ -87,40 +79,20 @@ export class ClientService {
     validatePassword(input.password);
     if (input.password !== input.confirmPassword) throw conflict('PASSWORD_MISMATCH', 'Passwords do not match');
     const passwordHash = await argon2.hash(input.password, ARGON2_OPTIONS);
-    const user: User = await this.db.$transaction(async (tx) => {
-      const existingUser = await tx.user.findUnique({ where: { phoneNormalized: phone }, select: { id: true } });
-      if (existingUser) throw conflict('PHONE_ALREADY_REGISTERED', 'An account for this phone already exists');
-
-      if (input.deviceFingerprint) {
-        const fingerprintDigest = this.deviceDigest(input.deviceFingerprint);
-        const device = await tx.device.findUnique({
-          where: { fingerprintDigest },
-          select: { userId: true, status: true },
-        });
-        if (device?.userId) {
-          throw forbidden('DEVICE_NOT_BOUND', 'This device is not available for the account');
-        }
-        if (device?.status === 'SUSPENDED') {
-          throw forbidden('DEVICE_SUSPENDED', 'This device is not available for the account');
-        }
-      }
-
-      const createdUser = await tx.user.create({
-        data: {
-          id: newId(),
-          uid: `LN-${randomToken(8).toUpperCase().slice(0, 16)}`,
-          phoneNormalized: phone,
-          phoneLast4: phoneLast4(phone),
-          passwordHash,
-        },
-      });
-      await writeAudit(tx, this.config, request, {
-        actorType: 'USER', actorId: createdUser.id, action: 'user.register', targetType: 'user', targetId: createdUser.id, result: 'SUCCESS',
-      });
-      return createdUser;
+    const user: User = await this.db.user.create({
+      data: {
+        id: newId(),
+        uid: `LN-${randomToken(8).toUpperCase().slice(0, 16)}`,
+        phoneNormalized: phone,
+        phoneLast4: phoneLast4(phone),
+        passwordHash,
+      },
     }).catch((error: unknown) => {
       if (this.isUniqueError(error)) throw conflict('PHONE_ALREADY_REGISTERED', 'An account for this phone already exists');
       throw error;
+    });
+    await writeAudit(this.db, this.config, request, {
+      actorType: 'USER', actorId: user.id, action: 'user.register', targetType: 'user', targetId: user.id, result: 'SUCCESS',
     });
     return { user: publicUser(user) };
   }
@@ -142,7 +114,6 @@ export class ClientService {
       throw unauthorized('INVALID_CREDENTIALS', 'Phone or password is incorrect');
     }
     if (user.status !== 'ACTIVE') throw forbidden('USER_SUSPENDED', 'This account has been suspended');
-    const mode = await getLicenseMode(this.db);
     let device: Device | null = null;
     if (input.deviceFingerprint) {
       const digest = this.deviceDigest(input.deviceFingerprint);
@@ -156,7 +127,7 @@ export class ClientService {
       if (device?.status === 'UNBOUND') {
         device = null;
       }
-      if (mode === LicenseMode.SingleDevice && !device) {
+      if (!device) {
         const boundDevice = await this.db.device.findFirst({
           where: { userId: user.id, status: { in: ['ACTIVE', 'SUSPENDED'] } },
           select: { id: true },
@@ -167,35 +138,15 @@ export class ClientService {
       }
     }
     const now = new Date();
+    await this.db.user.update({ where: { id: user.id }, data: { lastLoginAt: now } });
+    const tokens = await this.issueTokenPair(user, device, request.ip);
     const entitlement = await this.getEntitlement(user.id, now);
-    if (mode === LicenseMode.MultiDeviceSingleSession && input.deviceFingerprint && entitlement && activeEntitlement(entitlement, now) === 'ACTIVE') {
-      const digest = this.deviceDigest(input.deviceFingerprint);
-      device = device ?? await this.db.device.findUnique({ where: { fingerprintDigest: digest } });
-      if (!device) {
-        device = await this.db.device.create({
-          data: { id: newId(), fingerprintDigest: digest, fingerprintHint: digest.slice(-8), userId: user.id, status: 'ACTIVE', boundAt: now, clientVersion: input.clientVersion },
-        });
-      } else if (!device.userId) {
-        device = await this.db.device.update({
-          where: { id: device.id },
-          data: { userId: user.id, status: 'ACTIVE', boundAt: now, unboundAt: null, clientVersion: input.clientVersion },
-        });
-      }
-      await this.db.entitlement.update({ where: { id: entitlement.id }, data: { deviceId: device.id } });
-    }
-    const nextUser = mode === LicenseMode.MultiDeviceSingleSession
-      ? await this.db.user.update({ where: { id: user.id }, data: { lastLoginAt: now, tokenVersion: { increment: 1 } } })
-      : await this.db.user.update({ where: { id: user.id }, data: { lastLoginAt: now } });
-    if (mode === LicenseMode.MultiDeviceSingleSession) {
-      await this.db.refreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: now } });
-    }
-    const tokens = await this.issueTokenPair(nextUser, device, request.ip);
     await writeAudit(this.db, this.config, request, {
       actorType: 'USER', actorId: user.id, action: 'user.login', targetType: 'user', targetId: user.id, result: 'SUCCESS',
     });
     return {
       ...tokens,
-      user: publicUser({ ...nextUser, lastLoginAt: now }),
+      user: publicUser({ ...user, lastLoginAt: now }),
       device: device ? publicDevice(device) : null,
       entitlement: entitlement ? publicEntitlement(entitlement) : null,
     };
@@ -247,7 +198,7 @@ export class ClientService {
     return { accessToken, refreshToken: result.refreshToken, tokenType: 'Bearer', expiresIn: this.config.accessTokenTtlSeconds };
   }
 
-  async logout(refreshToken: string | undefined, _request: ClientRequest): Promise<{ ok: true }> {
+  async logout(refreshToken: string | undefined, request: ClientRequest): Promise<{ ok: true }> {
     if (refreshToken) {
       await this.db.refreshToken.updateMany({ where: { tokenDigest: hmacDigest(this.config.refreshTokenHmacSecret, refreshToken), revokedAt: null }, data: { revokedAt: new Date() } });
     }
@@ -258,28 +209,20 @@ export class ClientService {
     const digest = licenseDigest(this.config.cardHmacSecret, input.licenseKey);
     const fingerprintDigest = this.deviceDigest(input.deviceFingerprint);
     const now = new Date();
-    const mode = await getLicenseMode(this.db);
     const outcome = await this.db.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM license_keys WHERE digest = ${digest} LIMIT 1 FOR UPDATE`;
       if (rows.length === 0) throw notFound('LICENSE_KEY_NOT_FOUND', 'License key is invalid');
       const key = await tx.licenseKey.findUnique({ where: { digest }, include: { plan: true, entitlement: true } });
       if (!key) throw notFound('LICENSE_KEY_NOT_FOUND', 'License key is invalid');
-      let reuseWithoutExtension = false;
       if (key.status === 'REDEEMED') {
-        if (key.redeemedByUserId !== userId || !key.redeemedByDeviceId) throw conflict('LICENSE_KEY_ALREADY_REDEEMED', 'License key has already been redeemed');
-        const originalDevice = await tx.device.findUnique({ where: { id: key.redeemedByDeviceId } });
-        const entitlement = await tx.entitlement.findUnique({ where: { id: key.entitlementId ?? '' }, include: { plan: true, device: true } });
-        const sameDevice = originalDevice?.fingerprintDigest === fingerprintDigest
-          && originalDevice.userId === userId
-          && originalDevice.status === 'ACTIVE';
-        if (sameDevice && entitlement && activeEntitlement(entitlement, now) === 'ACTIVE') {
-          return { idempotent: true as const, key, entitlement, device: originalDevice };
+        if (key.redeemedByUserId === userId && key.redeemedByDeviceId) {
+          const sameDevice = await tx.device.findFirst({ where: { id: key.redeemedByDeviceId, fingerprintDigest } });
+          if (sameDevice) {
+            const entitlement = await tx.entitlement.findUnique({ where: { id: key.entitlementId ?? '' }, include: { plan: true, device: true } });
+            if (entitlement) return { idempotent: true as const, key, entitlement, device: entitlement.device };
+          }
         }
-        if (mode === LicenseMode.MultiDeviceSingleSession && entitlement && activeEntitlement(entitlement, now) === 'ACTIVE') {
-          reuseWithoutExtension = true;
-        } else if (originalDevice?.status !== 'UNBOUND' || originalDevice.userId) {
-          throw conflict('LICENSE_KEY_ALREADY_REDEEMED', 'License key has already been redeemed');
-        }
+        throw conflict('LICENSE_KEY_ALREADY_REDEEMED', 'License key has already been redeemed');
       }
       if (key.status === 'REVOKED') throw conflict('LICENSE_KEY_REVOKED', 'License key has been revoked');
       if (key.expiresAt && key.expiresAt <= now) {
@@ -293,12 +236,10 @@ export class ClientService {
       const existingDevice = await tx.device.findUnique({ where: { fingerprintDigest } });
       if (existingDevice && existingDevice.userId && existingDevice.userId !== userId) throw conflict('DEVICE_BOUND_OTHER_USER', 'This device is already bound to another account');
       if (existingDevice?.status === 'SUSPENDED') throw forbidden('DEVICE_SUSPENDED', 'This device has been suspended');
-      if (mode === LicenseMode.SingleDevice) {
-        const accountDevices = await tx.device.count({ where: { userId, status: { in: ['ACTIVE', 'SUSPENDED'] } } });
-        if (!existingDevice && accountDevices > 0) throw conflict('ACCOUNT_DEVICE_LIMIT', 'This account already has a bound device');
-      }
+      const accountDevices = await tx.device.count({ where: { userId, status: { in: ['ACTIVE', 'SUSPENDED'] } } });
+      if (!existingDevice && accountDevices > 0) throw conflict('ACCOUNT_DEVICE_LIMIT', 'This account already has a bound device');
       const device = existingDevice
-        ? (existingDevice.status === 'UNBOUND' || !existingDevice.userId) && !existingDevice.userId
+        ? existingDevice.status === 'UNBOUND' && !existingDevice.userId
           ? await tx.device.update({
             where: { id: existingDevice.id },
             data: { userId, status: 'ACTIVE', boundAt: now, unboundAt: null, clientVersion: input.clientVersion },
@@ -309,16 +250,13 @@ export class ClientService {
         });
       if (device.userId !== userId) throw conflict('DEVICE_BOUND_OTHER_USER', 'This device is already bound to another account');
       const existingEntitlement = await tx.entitlement.findUnique({ where: { userId }, include: { plan: true, device: true } });
-      if (mode === LicenseMode.SingleDevice && existingEntitlement && existingEntitlement.deviceId !== device.id && existingEntitlement.status === 'ACTIVE' && existingEntitlement.expiresAt > now) {
+      if (existingEntitlement && existingEntitlement.deviceId !== device.id && existingEntitlement.status === 'ACTIVE' && existingEntitlement.expiresAt > now) {
         throw conflict('ACCOUNT_DEVICE_LIMIT', 'This account already has an active entitlement on another device');
       }
-      if (reuseWithoutExtension && !existingEntitlement) throw conflict('LICENSE_KEY_ALREADY_REDEEMED', 'License key has already been redeemed');
       const startsAt = existingEntitlement && existingEntitlement.expiresAt > now ? existingEntitlement.startsAt : now;
       const base = existingEntitlement && existingEntitlement.expiresAt > now ? existingEntitlement.expiresAt : now;
       const expiresAt = new Date(base.getTime() + key.plan.durationDays * 86_400_000);
-      const entitlement = reuseWithoutExtension && existingEntitlement
-        ? await tx.entitlement.update({ where: { id: existingEntitlement.id }, data: { deviceId: device.id, version: { increment: 1 } }, include: { plan: true, device: true } })
-        : existingEntitlement
+      const entitlement = existingEntitlement
         ? await tx.entitlement.update({ where: { id: existingEntitlement.id }, data: { deviceId: device.id, planId: key.planId, status: 'ACTIVE', startsAt, expiresAt, version: { increment: 1 }, revokedAt: null, reason: null }, include: { plan: true, device: true } })
         : await tx.entitlement.create({ data: { id: newId(), userId, deviceId: device.id, planId: key.planId, status: 'ACTIVE', startsAt, expiresAt }, include: { plan: true, device: true } });
       await tx.device.update({ where: { id: device.id }, data: { userId, status: 'ACTIVE', boundAt: device.boundAt ?? now, unboundAt: null, clientVersion: input.clientVersion ?? device.clientVersion } });
@@ -330,14 +268,12 @@ export class ClientService {
       throw error;
     });
     const entitlement = outcome.entitlement;
-    const user = mode === LicenseMode.MultiDeviceSingleSession
-      ? await this.db.user.update({ where: { id: userId }, data: { tokenVersion: { increment: 1 } } })
-      : await this.db.user.findUniqueOrThrow({ where: { id: userId } });
+    const offlineLease = await this.offlineToken(userId, entitlement, outcome.device, now, input.deviceFingerprint);
+    const user = await this.db.user.findUniqueOrThrow({ where: { id: userId } });
     await this.db.refreshToken.updateMany({
-      where: { userId, ...(mode === LicenseMode.MultiDeviceSingleSession ? {} : { deviceId: null }), revokedAt: null },
+      where: { userId, deviceId: null, revokedAt: null },
       data: { revokedAt: now },
     });
-    const offlineLease = await this.offlineToken(userId, entitlement, outcome.device, now, input.deviceFingerprint);
     const tokens = await this.issueTokenPair(user, outcome.device, request.ip);
     return {
       ...tokens,
@@ -354,7 +290,6 @@ export class ClientService {
   async heartbeat(userId: string, claims: AccessClaims | undefined, input: HeartbeatInput, request: ClientRequest) {
     const fingerprintDigest = this.deviceDigest(input.deviceFingerprint);
     const now = new Date();
-    const mode = await getLicenseMode(this.db);
     const user = await this.db.user.findUnique({ where: { id: userId } });
     if (!user) throw unauthorized();
     if (user.status !== 'ACTIVE') throw forbidden('USER_SUSPENDED', 'This account has been suspended');
@@ -365,7 +300,7 @@ export class ClientService {
     if (claims?.did && claims.did !== device.id) throw forbidden('DEVICE_MISMATCH', 'The access token is for another device');
     if (claims?.dver !== undefined && claims.dver !== device.tokenVersion) throw unauthorized('SESSION_INVALIDATED', 'Session has been invalidated');
     const entitlement = await this.db.entitlement.findUnique({ where: { userId }, include: { plan: true, device: true } });
-    if (!entitlement || activeEntitlement(entitlement, now) !== 'ACTIVE' || (mode === LicenseMode.SingleDevice && entitlement.deviceId !== device.id)) {
+    if (!entitlement || activeEntitlement(entitlement, now) !== 'ACTIVE' || entitlement.deviceId !== device.id) {
       throw forbidden('ENTITLEMENT_INACTIVE', 'Membership is not active on this device');
     }
     const updatedDevice = await this.db.device.update({ where: { id: device.id }, data: { lastSeenAt: now, clientVersion: input.clientVersion ?? device.clientVersion, lastIpHash: hmacDigest(this.config.ipHmacSecret, request.ip) } });

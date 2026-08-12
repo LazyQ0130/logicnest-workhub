@@ -16,7 +16,6 @@ import { useDispatch, useSelector } from 'react-redux';
 import { i18nService } from '../../services/i18n';
 import { imService } from '../../services/im';
 import { LogReporterAction, reportYdAnalyzer } from '../../services/logReporter';
-import { formatUserFacingError } from '../../services/userFacingError';
 import { RootState } from '../../store';
 import { clearError,setDingTalkConfig, setDingTalkInstanceConfig, setDiscordConfig, setDiscordInstanceConfig, setEmailInstanceConfig, setFeishuConfig, setFeishuInstanceConfig, setNeteaseBeeChanConfig, setNimConfig, setNimInstanceConfig, setPopoInstanceConfig, setQQConfig, setQQInstanceConfig, setTelegramInstanceConfig, setTelegramOpenClawConfig, setWecomConfig, setWecomInstanceConfig, setWeixinConfig } from '../../store/slices/imSlice';
 import type { DiscordOpenClawConfig, EmailInstanceConfig, IMConnectivityCheck, IMConnectivityTestResult, IMGatewayConfig, NimOpenClawConfig, PopoOpenClawConfig, TelegramOpenClawConfig, WeixinOpenClawConfig } from '../../types/im';
@@ -388,7 +387,7 @@ function translateIMError(error: string | null): string {
   if (i18nKey) {
     return i18nService.t(i18nKey);
   }
-  return formatUserFacingError(error, { fallbackKey: 'imConnectivityFailed' });
+  return error;
 }
 
 const IMSettings: React.FC = () => {

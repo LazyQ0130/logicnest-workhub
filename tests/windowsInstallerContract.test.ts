@@ -21,7 +21,7 @@ const rootInstallerTemplate = repoFile(
 const webPackageTemplate = repoFile(
   'node_modules/app-builder-lib/templates/nsis/include/webPackage.nsh',
 );
-const appBuilderPatch = repoFile('patches/app-builder-lib+26.15.3.patch');
+const appBuilderPatch = repoFile('patches/app-builder-lib+24.13.3.patch');
 const electronBuilderConfig = JSON.parse(repoFile('electron-builder.json')) as {
   nsis?: { deleteAppDataOnUninstall?: boolean };
 };

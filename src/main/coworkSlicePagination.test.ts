@@ -26,7 +26,7 @@ import type { CoworkMessage,CoworkSession, CoworkSessionSummary } from '../rende
 // ---------------------------------------------------------------------------
 
 function makeSession(id: string, updatedAt = Date.now()): CoworkSessionSummary {
-  return { id, title: `Session ${id}`, status: 'idle', pinned: false, cwd: '/tmp', createdAt: updatedAt, updatedAt };
+  return { id, title: `Session ${id}`, status: 'idle', pinned: false, createdAt: updatedAt, updatedAt };
 }
 
 function makeFullSession(id: string, messages: CoworkMessage[] = [], messagesOffset = 0): CoworkSession {

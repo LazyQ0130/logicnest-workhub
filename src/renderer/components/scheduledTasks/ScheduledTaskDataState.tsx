@@ -6,7 +6,6 @@ import {
   type ScheduledTaskDataStatus as ScheduledTaskDataStatusValue,
 } from '../../../scheduledTask/constants';
 import { i18nService } from '../../services/i18n';
-import { formatUserFacingError } from '../../services/userFacingError';
 
 interface ScheduledTaskDataStateProps {
   status: ScheduledTaskDataStatusValue;
@@ -28,7 +27,7 @@ const ScheduledTaskDataState: React.FC<ScheduledTaskDataStateProps> = ({
         <p className="text-sm font-medium text-foreground">
           {i18nService.t('scheduledTasksLoadFailed')}
         </p>
-        {error && <p className="mt-1 max-w-md text-xs text-secondary">{formatUserFacingError(error, { fallbackKey: 'scheduledTasksLoadFailed' })}</p>}
+        {error && <p className="mt-1 max-w-md text-xs text-secondary">{error}</p>}
         <button
           type="button"
           onClick={onRetry}

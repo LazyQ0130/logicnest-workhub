@@ -24,6 +24,7 @@
     "imap-smtp-email": { "order": 211, "enabled": false },
     "seedance": { "order": 212, "enabled": false },
     "seedream": { "order": 213, "enabled": false },
+    "skin-creator": { "order": 214, "enabled": false },
     "films-search": { "order": 222, "enabled": false },
     "music-search": { "order": 223, "enabled": false },
     "technology-news-search": { "order": 224, "enabled": false },

@@ -3,7 +3,6 @@ import { BrowserWindow, ipcMain } from 'electron';
 import { McpIpcChannel } from '../../../shared/mcp/constants';
 import { normalizeMcpServerUrlInput } from '../../../shared/mcp/url';
 import { OpenClawConfigImpact } from '../../libs/openclawConfigImpact';
-import type { LicenseCatalogItem } from '../../license/licenseApiClient';
 import type { McpRuntime } from '../../mcp/mcpRuntime';
 import type { McpServerFormData } from '../../mcp/mcpStore';
 import { startQichachaMcpApiKeyLogin } from '../../mcp/qichachaMcpAuth';
@@ -15,20 +14,18 @@ export interface McpHandlerDeps {
     restartGatewayIfRunning?: boolean;
     expectedImpact?: OpenClawConfigImpact;
   }) => Promise<{ success: boolean; changed: boolean }>;
-  getCatalog: (kind: LicenseCatalogItem['kind']) => Promise<{ items: LicenseCatalogItem[]; offline: boolean }>;
 }
 
-async function syncMcpConfig(
+function syncMcpConfig(
   syncOpenClawConfig: McpHandlerDeps['syncOpenClawConfig'],
   reason: string,
-): Promise<void> {
-  const result = await syncOpenClawConfig({
+): void {
+  syncOpenClawConfig({
     reason,
     expectedImpact: OpenClawConfigImpact.Restart,
-  });
-  if (!result.success) {
-    throw new Error('OpenClaw gateway restart failed: the connection was saved but configuration sync was not completed.');
-  }
+  }).catch(err =>
+    console.error('[MCP] config sync error:', err),
+  );
 }
 
 function normalizeMcpServerInput(data: Partial<McpServerFormData>): Partial<McpServerFormData> {
@@ -102,7 +99,7 @@ function buildQichachaServerData(
 }
 
 export function registerMcpHandlers(deps: McpHandlerDeps): void {
-  const { getMcpRuntime, syncOpenClawConfig, getCatalog } = deps;
+  const { getMcpRuntime, syncOpenClawConfig } = deps;
 
   ipcMain.handle(McpIpcChannel.List, () => {
     try {
@@ -139,7 +136,7 @@ export function registerMcpHandlers(deps: McpHandlerDeps): void {
           mcpRuntime.ensureLaunchResolution(server.id, 'mcp-server-created');
         }
         const servers = mcpRuntime.getStore().listServers();
-        await syncMcpConfig(syncOpenClawConfig, 'mcp-server-created');
+        syncMcpConfig(syncOpenClawConfig, 'mcp-server-created');
         return { success: true, servers };
       } catch (error) {
         return {
@@ -174,7 +171,7 @@ export function registerMcpHandlers(deps: McpHandlerDeps): void {
           mcpRuntime.ensureLaunchResolution(server.id, 'mcp-server-updated');
         }
         const servers = mcpRuntime.getStore().listServers();
-        await syncMcpConfig(syncOpenClawConfig, 'mcp-server-updated');
+        syncMcpConfig(syncOpenClawConfig, 'mcp-server-updated');
         return { success: true, servers };
       } catch (error) {
         return {
@@ -190,7 +187,7 @@ export function registerMcpHandlers(deps: McpHandlerDeps): void {
       const mcpRuntime = getMcpRuntime();
       mcpRuntime.getStore().deleteServer(id);
       const servers = mcpRuntime.getStore().listServers();
-      await syncMcpConfig(syncOpenClawConfig, 'mcp-server-deleted');
+      syncMcpConfig(syncOpenClawConfig, 'mcp-server-deleted');
       return { success: true, servers };
     } catch (error) {
       return {
@@ -215,7 +212,7 @@ export function registerMcpHandlers(deps: McpHandlerDeps): void {
         store.deleteServer(server.id);
       }
       const servers = store.listServers();
-      await syncMcpConfig(syncOpenClawConfig, 'mcp-registry-deleted');
+      syncMcpConfig(syncOpenClawConfig, 'mcp-registry-deleted');
       return { success: true, servers };
     } catch (error) {
       return {
@@ -233,7 +230,7 @@ export function registerMcpHandlers(deps: McpHandlerDeps): void {
         mcpRuntime.ensureLaunchResolution(options.id, 'mcp-server-enabled');
       }
       const servers = mcpRuntime.getStore().listServers();
-      await syncMcpConfig(syncOpenClawConfig, 'mcp-server-toggled');
+      syncMcpConfig(syncOpenClawConfig, 'mcp-server-toggled');
       return { success: true, servers };
     } catch (error) {
       return {
@@ -263,7 +260,7 @@ export function registerMcpHandlers(deps: McpHandlerDeps): void {
           }
         }
         const servers = store.listServers();
-        await syncMcpConfig(syncOpenClawConfig, 'mcp-registry-toggled');
+        syncMcpConfig(syncOpenClawConfig, 'mcp-registry-toggled');
         return { success: true, servers };
       } catch (error) {
         return {
@@ -279,7 +276,7 @@ export function registerMcpHandlers(deps: McpHandlerDeps): void {
       const mcpRuntime = getMcpRuntime();
       await mcpRuntime.getLaunchResolverManager().retry(id);
       const servers = mcpRuntime.getStore().listServers();
-      await syncMcpConfig(syncOpenClawConfig, 'mcp-launch-manual-retry');
+      syncMcpConfig(syncOpenClawConfig, 'mcp-launch-manual-retry');
       return { success: true, servers };
     } catch (error) {
       return {
@@ -311,7 +308,7 @@ export function registerMcpHandlers(deps: McpHandlerDeps): void {
       }
 
       const servers = store.listServers();
-      await syncMcpConfig(syncOpenClawConfig, 'qichacha-mcp-connected');
+      syncMcpConfig(syncOpenClawConfig, 'qichacha-mcp-connected');
       return { success: true, servers };
     } catch (error) {
       return {
@@ -322,27 +319,8 @@ export function registerMcpHandlers(deps: McpHandlerDeps): void {
   });
 
   ipcMain.handle(McpIpcChannel.FetchMarketplace, async () => {
-    try {
-      const catalog = await getCatalog('CONNECTOR');
-      const servers = catalog.items.map((item) => {
-        const server = item.metadata.server as Record<string, unknown> | undefined;
-        return {
-          id: item.slug,
-          name: item.nameZh,
-          description_zh: item.descriptionZh,
-          description_en: item.descriptionEn || item.descriptionZh,
-          category: item.tags[0] || 'productivity',
-          transportType: typeof server?.transportType === 'string' ? server.transportType : 'stdio',
-          command: typeof server?.command === 'string' ? server.command : 'npx',
-          defaultArgs: Array.isArray(server?.args) ? server.args.filter((value): value is string => typeof value === 'string') : [],
-          requiredEnvKeys: Array.isArray(server?.requiredEnvKeys) ? server.requiredEnvKeys.filter((value): value is string => typeof value === 'string') : [],
-          registryId: item.id,
-        };
-      });
-      const categories = [...new Set(servers.map((server) => server.category))].map((id) => ({ id, name_zh: id, name_en: id }));
-      return { success: true, data: { servers, categories }, offline: catalog.offline };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : '连接目录暂不可用' };
-    }
+    // LogicNest only runs MCP servers explicitly configured by the user.
+    // The upstream hosted marketplace is intentionally unavailable.
+    return { success: true, data: [] };
   });
 }

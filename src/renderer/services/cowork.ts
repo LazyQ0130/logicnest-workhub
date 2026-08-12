@@ -88,13 +88,12 @@ import {
   shouldReloadCurrentSessionForChange,
 } from './coworkSessionRefreshPolicy';
 import { i18nService } from './i18n';
-import { formatUserFacingError } from './userFacingError';
 
 const STREAM_ERROR_DUPLICATE_WINDOW_MS = 10_000;
 
 const classifyError = (error: string): string => {
   const key = classifyErrorKey(error);
-  return key ? i18nService.t(key) : formatUserFacingError(error);
+  return key ? i18nService.t(key) : error;
 };
 
 const normalizeErrorText = (text: string): string => text.trim();

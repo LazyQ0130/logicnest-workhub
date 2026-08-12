@@ -5,15 +5,6 @@ export function errorMessage(error: unknown): string {
     if (error.code === 'ADMIN_PASSWORD_CHANGE_REQUIRED') {
       return '首次登录必须先修改密码';
     }
-    if (error.code === 'CURRENT_PASSWORD_INVALID') {
-      return '当前密码不正确，请重新输入';
-    }
-    if (error.code === 'WEAK_ADMIN_PASSWORD') {
-      return '新密码强度不足，管理员密码至少需要 12 位';
-    }
-    if (error.code === 'PASSWORD_REUSE') {
-      return '新密码不能与当前密码相同';
-    }
     if (error.code === 'PLAN_IN_USE') {
       return '该套餐已关联卡密或会员，请改为停用';
     }

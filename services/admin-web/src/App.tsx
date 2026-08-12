@@ -12,8 +12,6 @@ const AuditLogsPage = lazy(() => import('./pages/AuditLogsPage').then((module) =
 const ChangePasswordPage = lazy(() => import('./pages/ChangePasswordPage').then((module) => ({ default: module.ChangePasswordPage })));
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })));
 const DevicesPage = lazy(() => import('./pages/DevicesPage').then((module) => ({ default: module.DevicesPage })));
-const CatalogPage = lazy(() => import('./pages/CatalogPage').then((module) => ({ default: module.CatalogPage })));
-const DesktopReleasesPage = lazy(() => import('./pages/DesktopReleasesPage').then((module) => ({ default: module.DesktopReleasesPage })));
 const PlansPage = lazy(() => import('./pages/PlansPage').then((module) => ({ default: module.PlansPage })));
 const UsersPage = lazy(() => import('./pages/UsersPage').then((module) => ({ default: module.UsersPage })));
 
@@ -61,12 +59,6 @@ export function App() {
                   </Route>
                   <Route element={<PermissionRoute permission={Permission.DevicesRead} />}>
                     <Route path="/devices" element={<DevicesPage />} />
-                  </Route>
-                  <Route element={<PermissionRoute permission={Permission.CatalogRead} />}>
-                    <Route path="/catalog" element={<CatalogPage />} />
-                  </Route>
-                  <Route element={<PermissionRoute permission={Permission.DesktopReleasesRead} />}>
-                    <Route path="/desktop-releases" element={<DesktopReleasesPage />} />
                   </Route>
                   <Route element={<PermissionRoute permission={Permission.AuditLogsRead} />}>
                     <Route path="/audit-logs" element={<AuditLogsPage />} />

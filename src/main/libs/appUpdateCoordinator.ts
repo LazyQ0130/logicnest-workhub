@@ -43,8 +43,6 @@ type ChangeLogLang = {
 
 type PlatformDownload = {
   url?: string;
-  sha256?: string;
-  sizeBytes?: number;
 };
 
 type UpdateApiResponse = {
@@ -263,15 +261,33 @@ export class AppUpdateCoordinator {
       this.clearStoredReadyFile(targetSource);
       await this.pruneCachedInstallerFiles(targetSource);
 
-      const state = this.setState({
-        status: AppUpdateStatus.Available,
-        source: targetSource,
-        info,
-        progress: null,
-        readyFilePath: null,
-        readyFileHash: null,
-        errorMessage: null,
-      });
+      if (!this.canPredownload(info.url)) {
+        const state = this.setState({
+          status: AppUpdateStatus.Available,
+          source: targetSource,
+          info,
+          progress: null,
+          readyFilePath: null,
+          readyFileHash: null,
+          errorMessage: null,
+        });
+        return { success: true, state, updateFound };
+      }
+
+      if (options?.manual === true) {
+        const state = this.setState({
+          status: AppUpdateStatus.Available,
+          source: targetSource,
+          info,
+          progress: null,
+          readyFilePath: null,
+          readyFileHash: null,
+          errorMessage: null,
+        });
+        return { success: true, state, updateFound };
+      }
+
+      const state = await this.startDownload(info, flowId, targetSource);
       return { success: true, state, updateFound };
     } catch (error) {
       if (!this.isFlowActive(flowId, targetSource)) {
@@ -504,7 +520,6 @@ export class AppUpdateCoordinator {
             errorMessage: null,
           });
         },
-        { sha256: info.sha256, sizeBytes: info.sizeBytes },
       );
       const filePath = download.filePath;
       if (!this.isFlowActive(flowId, source)) {
@@ -623,8 +638,6 @@ export class AppUpdateCoordinator {
         en: toEntry(value?.changeLog?.en),
       },
       url: this.getPlatformDownloadUrl(value),
-      sha256: this.getPlatformDownloadHash(value),
-      sizeBytes: this.getPlatformDownloadSize(value),
     };
     console.log(
       `[AppUpdate] update available: ${currentVersion} -> ${latestVersion}, downloadUrl=${formatUpdateUrlForLog(result.url)}`,
@@ -660,23 +673,6 @@ export class AppUpdateCoordinator {
     }
 
     return getFallbackDownloadUrl();
-  }
-
-  private getPlatformDownloadHash(
-    value: NonNullable<NonNullable<UpdateApiResponse['data']>['value']> | undefined,
-  ): string | undefined {
-    if (process.platform === 'win32') return value?.windowsX64?.sha256?.trim() || undefined;
-    return undefined;
-  }
-
-  private getPlatformDownloadSize(
-    value: NonNullable<NonNullable<UpdateApiResponse['data']>['value']> | undefined,
-  ): number | undefined {
-    if (process.platform === 'win32') {
-      const size = value?.windowsX64?.sizeBytes;
-      return typeof size === 'number' && Number.isFinite(size) && size > 0 ? size : undefined;
-    }
-    return undefined;
   }
 
   private canPredownload(url: string): boolean {
@@ -737,8 +733,6 @@ export class AppUpdateCoordinator {
     if (version) {
       params.append('version', version);
     }
-    params.set('platform', process.platform);
-    params.set('arch', process.arch);
     const { firstKeyfrom, latestKeyfrom } = getKeyfromAttribution(this.store);
     params.set('firstKeyfrom', firstKeyfrom);
     params.set('latestKeyfrom', latestKeyfrom);

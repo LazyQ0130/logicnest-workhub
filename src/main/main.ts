@@ -166,7 +166,6 @@ import { APP_NAME, APP_PROTOCOL_PREFIX, APP_SCHEME, APP_USER_MODEL_ID, DB_FILENA
 import { createLocalFileProtocolResponse } from './artifactLocalFileProtocol';
 import { authQuotaGateStateFromQuota, AuthSubscriptionStatus, createDefaultAuthQuotaGateState, normalizeAuthQuota } from './authQuota';
 import { type AutoLaunchStatus, getAutoLaunchStatus, isAutoLaunched, setAutoLaunchEnabled } from './autoLaunchManager';
-import { CatalogProvider } from './catalog/catalogProvider';
 import { getRecentComputerUseLogEntries } from './computerUse/computerUseLogs';
 import { type CoworkForkContextMessage, type CoworkMessage, CoworkStore } from './coworkStore';
 import { setLanguage, t } from './i18n';
@@ -400,7 +399,6 @@ import {
 import { isLicenseAuthorized, LicenseController } from './license/licenseController';
 import { resolveLicenseQaE2eRuntime } from './license/qaE2eRuntime';
 import { broadcastLicenseState, registerLicenseIpc } from './license/registerLicenseIpc';
-import { resolveLicenseRuntimeConfig } from './license/runtimeConfig';
 import { ElectronSecureSessionStore } from './license/secureSessionStore';
 import { getLogFilePath, getRecentMainLogEntries, initLogger } from './logger';
 import { type AskUserResponse, McpRuntime } from './mcp/mcpRuntime';
@@ -429,6 +427,12 @@ import { registerVoiceInputPermissionHandler } from './permissions/voiceInputPer
 import { isHiddenUserPluginId } from './plugins/pluginManager';
 import { SkillManager } from './skills/skillManager';
 import { getSkillServiceManager } from './skills/skillServices';
+import {
+  notifySkinChanged,
+  registerSkinElectronIntegration,
+  SKIN_PRIVILEGED_SCHEME,
+  SkinRuntimeController,
+} from './skins';
 import { SqliteStore } from './sqliteStore';
 import { StartupProfiler } from './startupProfiler';
 import { SubagentMessageStore } from './subagentMessageStore';
@@ -452,6 +456,7 @@ protocol.registerSchemesAsPrivileged([
       stream: true,
     },
   },
+  SKIN_PRIVILEGED_SCHEME,
 ]);
 
 const gwDiagTs = (): string => {
@@ -1872,6 +1877,7 @@ let openClawRuntimeAdapter: OpenClawRuntimeAdapter | null = null;
 let coworkEngineRouter: CoworkEngineRouter | null = null;
 let skillManager: SkillManager | null = null;
 let mcpRuntime: McpRuntime | null = null;
+let skinRuntimeController: SkinRuntimeController | null = null;
 let imGatewayManager: IMGatewayManager | null = null;
 let storeInitPromise: Promise<SqliteStore> | null = null;
 let sqliteBackupManager: SqliteBackupManager | null = null;
@@ -1886,7 +1892,6 @@ let memoryMigrationDone = false;
 let preventSleepBlockerId: number | null = null;
 let appUpdateCoordinator: AppUpdateCoordinator | null = null;
 let licenseController: LicenseController | null = null;
-let catalogProvider: CatalogProvider | null = null;
 let authorizedRuntimeStarted = false;
 let meetingRoomCoordinator: MeetingRoomCoordinator | null = null;
 let disposeMeetingRoomIpc: (() => void) | null = null;
@@ -2948,6 +2953,7 @@ const bindCoworkRuntimeForwarder = (): void => {
 
   runtime.on('complete', (sessionId: string, claudeSessionId: string | null) => {
     mediaSelectionBySession.delete(sessionId);
+    skinRuntimeController?.handleRuntimeComplete(sessionId);
     mediaReferencesBySession.delete(sessionId);
     getDesktopNotificationManager().handleComplete(sessionId);
     const windows = BrowserWindow.getAllWindows();
@@ -2971,6 +2977,7 @@ const bindCoworkRuntimeForwarder = (): void => {
 
   runtime.on('error', (sessionId: string, error: string) => {
     mediaSelectionBySession.delete(sessionId);
+    skinRuntimeController?.handleRuntimeError(sessionId);
     mediaReferencesBySession.delete(sessionId);
     // Mark session as error in store so the .catch() fallback can detect duplicates.
     try {
@@ -3683,6 +3690,26 @@ const resolveMediaSelectionForSession = (sessionId: string | null): MediaSelecti
   }
 
   return undefined;
+};
+
+const getSkinRuntimeController = (): SkinRuntimeController => {
+  if (!skinRuntimeController) {
+    skinRuntimeController = new SkinRuntimeController({
+      rootDir: path.join(app.getPath('userData'), 'skins'),
+      getInstalledKits: () => (
+        getStore().get<Record<string, InstalledKitRecord>>(KitStoreKey.Installed) ?? {}
+      ),
+      getParentSessionId: sessionId => (
+        getCoworkParentSessionId(getStore().getDatabase(), sessionId)
+      ),
+      resolveSessionId: sessionKey => (
+        resolveCoworkSessionIdByOpenClawSessionKey(getStore().getDatabase(), sessionKey)
+      ),
+      resolveMediaSelection: resolveMediaSelectionForSession,
+      onChanged: notifySkinChanged,
+    });
+  }
+  return skinRuntimeController;
 };
 
 const mediaModelIdForOutput = (model: unknown, fallback?: string): string => {
@@ -4782,6 +4809,10 @@ if (!gotTheLock) {
     context: { sessionKey: string; toolCallId: string };
   }): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean; details?: Record<string, unknown> }> => {
     const { tool, args } = request;
+    const skinRuntime = getSkinRuntimeController();
+    if (skinRuntime.handlesTool(tool)) {
+      return skinRuntime.handleToolRequest(request);
+    }
     const action = (args.action as string) || 'generate';
     const serverBaseUrl = getServerApiBaseUrl();
     const sessionId = extractSessionIdFromKey(request.context.sessionKey);
@@ -4793,6 +4824,14 @@ if (!gotTheLock) {
       : canonicalizeMediaModelId(selection?.videoModelId || selection?.modelId || '');
     let selectedModel = explicitModel || resolvedModelFromSelection;
     let selectedModelSource = explicitModel ? 'tool' : resolvedModelFromSelection ? 'selection' : 'none';
+
+    if (action === 'generate' && tool === MediaGenerationTool.Image) {
+      const skinPreflight = await skinRuntime.preflightLobsterImageGeneration(
+        sessionId,
+        selection,
+      );
+      if (skinPreflight) return skinPreflight;
+    }
 
     if (action === 'generate' && resolvedModelFromSelection && explicitModel && explicitModel !== resolvedModelFromSelection) {
       console.warn(`[MediaGeneration] overriding LLM model choice "${explicitModel}" with user selection "${resolvedModelFromSelection}"`);
@@ -6760,8 +6799,6 @@ if (!gotTheLock) {
     getSkillManager,
     getSkillStoreUrl,
     getOpenClawRuntimeAdapter: () => openClawRuntimeAdapter,
-    getCatalog: kind => catalogProvider?.list(kind) ?? Promise.reject(new Error('目录服务尚未初始化')),
-    materializeCatalogAsset: url => catalogProvider?.materialize(url) ?? Promise.reject(new Error('目录服务尚未初始化')),
   });
 
   // Kits IPC handlers
@@ -6770,8 +6807,6 @@ if (!gotTheLock) {
     getKitStoreUrl,
     getSkillManager,
     syncOpenClawConfig,
-    getCatalog: kind => catalogProvider?.list(kind) ?? Promise.reject(new Error('目录服务尚未初始化')),
-    materializeCatalogAsset: url => catalogProvider?.materialize(url) ?? Promise.reject(new Error('目录服务尚未初始化')),
   });
 
   ipcMain.handle(OpenClawEngineIpc.GetStatus, async () => {
@@ -7197,11 +7232,7 @@ if (!gotTheLock) {
     }
   });
 
-  registerMcpHandlers({
-    getMcpRuntime,
-    syncOpenClawConfig,
-    getCatalog: kind => catalogProvider?.list(kind) ?? Promise.reject(new Error('目录服务尚未初始化')),
-  });
+  registerMcpHandlers({ getMcpRuntime, syncOpenClawConfig });
 
   // Cowork IPC handlers
   ipcMain.handle(
@@ -7317,7 +7348,13 @@ if (!gotTheLock) {
           );
         }
 
-        const normalizedMediaSelection = normalizeMediaSelectionState(options.mediaSelection);
+        const skinTurn = getSkinRuntimeController().prepareTurn({
+          sessionId: session.id,
+          kitIds: options.kitIds,
+          mediaSelection: normalizeMediaSelectionState(options.mediaSelection),
+          mediaGenerationEntitled: cachedMediaGenerationEntitled,
+        });
+        const { workflowKind, mediaSelection: normalizedMediaSelection } = skinTurn;
         if (normalizedMediaSelection && normalizedMediaSelection.mode !== 'none') {
           mediaSelectionBySession.set(session.id, normalizedMediaSelection);
         } else {
@@ -7379,6 +7416,7 @@ if (!gotTheLock) {
             imageAttachments: options.imageAttachments,
             agentId: options.agentId,
             mediaSelection: normalizedMediaSelection,
+            workflowKind,
             mediaReferences: options.mediaReferences,
             selectedTextSnippets,
             browserAnnotations,
@@ -7497,7 +7535,13 @@ if (!gotTheLock) {
           };
         }
 
-        const normalizedMediaSelection = normalizeMediaSelectionState(options.mediaSelection);
+        const skinTurn = getSkinRuntimeController().prepareTurn({
+          sessionId: options.sessionId,
+          kitIds: options.kitIds,
+          mediaSelection: normalizeMediaSelectionState(options.mediaSelection),
+          mediaGenerationEntitled: cachedMediaGenerationEntitled,
+        });
+        const { workflowKind, mediaSelection: normalizedMediaSelection } = skinTurn;
         if (normalizedMediaSelection && normalizedMediaSelection.mode !== 'none') {
           mediaSelectionBySession.set(options.sessionId, normalizedMediaSelection);
         } else {
@@ -7537,6 +7581,7 @@ if (!gotTheLock) {
             resolvedKitCapabilities: options.resolvedKitCapabilities,
             imageAttachments: options.imageAttachments,
             mediaSelection: normalizedMediaSelection,
+            workflowKind,
             mediaReferences: options.mediaReferences,
             selectedTextSnippets,
             browserAnnotations,
@@ -7882,6 +7927,7 @@ if (!gotTheLock) {
       const coworkStoreInstance = getCoworkStore();
       coworkStoreInstance.deleteSession(sessionId);
       mediaSelectionBySession.delete(sessionId);
+      skinRuntimeController?.handleSessionDeleted(sessionId);
       mediaReferencesBySession.delete(sessionId);
       getDesktopNotificationManager().handleSessionDeleted(sessionId);
       // Remove any pending media tasks for this session
@@ -7925,6 +7971,7 @@ if (!gotTheLock) {
       coworkStoreInstance.deleteSessions(sessionIds);
       const router = getCoworkEngineRouter();
       for (const sessionId of sessionIds) {
+        skinRuntimeController?.handleSessionDeleted(sessionId);
         getDesktopNotificationManager().handleSessionDeleted(sessionId);
         try {
           getIMGatewayManager()?.getIMStore()?.deleteSessionMappingByCoworkSessionId(sessionId);
@@ -10435,11 +10482,7 @@ if (!gotTheLock) {
   registerAsrIpcHandlers({
     getAuthTokens,
     fetchWithAuth,
-    fetchWithLicenseAuth: (url, options) => licenseController
-      ? licenseController.fetchWithAuthorizedToken(url, options)
-      : fetchWithAuth(url, options),
     getServerApiBaseUrl,
-    isLicenseAuthorized: () => Boolean(licenseController && isLicenseAuthorized(licenseController.getState())),
   });
 
   registerSiteIpcHandlers({
@@ -10972,7 +11015,7 @@ if (!gotTheLock) {
           ? `script-src 'self' 'unsafe-inline' http://localhost:${devPort} ws://localhost:${devPort}`
           : "script-src 'self'",
         "style-src 'self' 'unsafe-inline' https:",
-        `img-src 'self' data: blob: https: http: ${ArtifactPreviewProtocol.LocalFile}:`,
+        `img-src 'self' data: blob: https: http: ${ArtifactPreviewProtocol.LocalFile}: ${SKIN_PRIVILEGED_SCHEME.scheme}:`,
         // 允许连接到所有域名，不做限制
         'connect-src *',
         "font-src 'self' data: blob: https:",
@@ -11576,6 +11619,7 @@ if (!gotTheLock) {
 
     // 注册 localfile:// 自定义协议，用于安全加载本地媒体文件。
     protocol.handle(ArtifactPreviewProtocol.LocalFile, createLocalFileProtocolResponse);
+    registerSkinElectronIntegration(getSkinRuntimeController().store);
 
     profiler.mark('initStore');
     console.log('[Main] initApp: starting initStore()');
@@ -11587,33 +11631,10 @@ if (!gotTheLock) {
     if (restartedMeetingCount > 0) {
       console.log(`[MeetingRoom] paused ${restartedMeetingCount} running meeting(s) after app restart.`);
     }
-    const licenseRuntimeConfig = resolveLicenseRuntimeConfig({
-      env: process.env,
-      isDev,
-      isPackaged: app.isPackaged,
-      resourcesPath: process.resourcesPath,
-    });
-    if (licenseRuntimeConfig.error) {
-      console.error(`[License] packaged configuration unavailable (reason=${licenseRuntimeConfig.error})`);
-    }
-    // The legacy HTTP helpers read their endpoint from process.env, while the
-    // license controller reads the validated packaged config directly. Keep
-    // both paths on the same production endpoint so updates, sharing, ASR and
-    // other authorized requests do not fall back to the dev server in a
-    // packaged client.
-    if (licenseRuntimeConfig.config.apiBaseUrl) {
-      process.env.LOGICNEST_LICENSE_API_URL = licenseRuntimeConfig.config.apiBaseUrl;
-    }
-    if (licenseRuntimeConfig.config.publicKeyPem) {
-      process.env.LOGICNEST_LICENSE_PUBLIC_KEY_PEM = licenseRuntimeConfig.config.publicKeyPem;
-    }
-    if (licenseRuntimeConfig.config.trustedCaPem) {
-      process.env.LOGICNEST_LICENSE_CA_PEM = licenseRuntimeConfig.config.trustedCaPem;
-    }
     licenseController = new LicenseController({
-      apiBaseUrl: licenseRuntimeConfig.config.apiBaseUrl,
-      publicKeyPem: licenseRuntimeConfig.config.publicKeyPem,
-      trustedCaPem: licenseRuntimeConfig.config.trustedCaPem,
+      apiBaseUrl: process.env.LOGICNEST_LICENSE_API_URL
+        ?? (isDev ? 'http://127.0.0.1:8787/api/v1' : undefined),
+      publicKeyPem: process.env.LOGICNEST_LICENSE_PUBLIC_KEY_PEM,
       clientVersion: app.getVersion(),
       deviceFingerprint: resolveLicenseQaE2eRuntime({
         env: process.env,
@@ -11625,11 +11646,6 @@ if (!gotTheLock) {
       onAuthorizationLost: reason => {
         void suspendAuthorizedRuntime(reason);
       },
-    });
-    catalogProvider = new CatalogProvider({
-      controller: licenseController,
-      cacheDirectory: path.join(app.getPath('userData'), 'catalog-cache'),
-      downloadDirectory: path.join(app.getPath('temp'), 'logicnest-catalog-downloads'),
     });
     registerLicenseIpc(licenseController);
     const initialLicenseState = await licenseController.initialize();

@@ -13,9 +13,7 @@ import {
 } from './realtimeAudioRecorder';
 import { buildPcm16WavHeader } from './wavEncoder';
 
-// Windows system dictation can take a few seconds to load its grammar before
-// returning the final result after the audio stream ends.
-const REALTIME_FINAL_WAIT_MS = 30_000;
+const REALTIME_FINAL_WAIT_MS = 4_000;
 const PCM16_BYTES_PER_SAMPLE = 2;
 
 export interface RealtimeVoiceInputSession {
@@ -32,35 +30,6 @@ interface StartRealtimeVoiceInputOptions {
   onText: (text: string) => void;
   onError: (error: unknown) => void;
 }
-
-interface BrowserSpeechRecognitionResult {
-  isFinal: boolean;
-  0?: { transcript?: string };
-}
-
-interface BrowserSpeechRecognitionEvent extends Event {
-  resultIndex: number;
-  results: ArrayLike<BrowserSpeechRecognitionResult> & { [index: number]: BrowserSpeechRecognitionResult };
-}
-
-interface BrowserSpeechRecognitionErrorEvent extends Event {
-  error?: string;
-  message?: string;
-}
-
-interface BrowserSpeechRecognition {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
-  onerror: ((event: BrowserSpeechRecognitionErrorEvent) => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-  abort: () => void;
-}
-
-type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
 
 interface RealtimeAudioFrameBuildOptions {
   chunk: Uint8Array;
@@ -159,117 +128,6 @@ const parseRealtimeMessage = (data: MessageEvent['data']): AsrRealtimeEvent | nu
   }
 };
 
-const getBrowserSpeechRecognitionConstructor = (): BrowserSpeechRecognitionConstructor | null => {
-  // Electron's Chromium speech service depends on an external Google endpoint
-  // that is unavailable in the desktop delivery environment. Desktop clients
-  // use the bundled offline Whisper recognizer instead.
-  if (/Electron/i.test(navigator.userAgent)) return null;
-  const browserWindow = window as typeof window & {
-    SpeechRecognition?: BrowserSpeechRecognitionConstructor;
-    webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
-  };
-  return browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition ?? null;
-};
-
-const startBrowserSpeechInput = ({ onText, onError }: StartRealtimeVoiceInputOptions): RealtimeVoiceInputSession | null => {
-  if (navigator.onLine === false) return null;
-  const Recognition = getBrowserSpeechRecognitionConstructor();
-  if (!Recognition) return null;
-
-  const recognition = new Recognition();
-  recognition.continuous = true;
-  recognition.interimResults = true;
-  recognition.lang = 'zh-CN';
-  const finalSegments = new Map<number, string>();
-  let terminalError: AsrClientError | null = null;
-  let stopRequested = false;
-  let resolveStop: (() => void) | null = null;
-  let rejectStop: ((error: AsrClientError) => void) | null = null;
-  let stopFallbackTimer: ReturnType<typeof setTimeout> | null = null;
-
-  const getFinalText = (): string => {
-    return [...finalSegments.entries()]
-      .sort(([left], [right]) => left - right)
-      .map(([, text]) => text)
-      .join('');
-  };
-
-  const finishStop = () => {
-    if (stopFallbackTimer) clearTimeout(stopFallbackTimer);
-    stopFallbackTimer = null;
-    if (terminalError) {
-      rejectStop?.(terminalError);
-    } else if (!getFinalText()) {
-      rejectStop?.(new AsrClientError(getFallbackAsrErrorMessage(AsrApiCode.RecognitionFailed), AsrApiCode.RecognitionFailed));
-    } else {
-      resolveStop?.();
-    }
-    resolveStop = null;
-    rejectStop = null;
-  };
-
-  recognition.onresult = (event) => {
-    for (let index = event.resultIndex; index < event.results.length; index += 1) {
-      const result = event.results[index];
-      const text = result?.[0]?.transcript?.trim() ?? '';
-      if (!text) continue;
-      if (result.isFinal) {
-        finalSegments.set(index, text);
-        onText(getFinalText());
-      }
-    }
-  };
-  recognition.onerror = (event) => {
-    const errorCode = event.error || 'unknown';
-    const errorMessage = event.message || getFallbackAsrErrorMessage(AsrApiCode.UpstreamError);
-    console.warn(`[VoiceInput] browser speech recognition error; code=${errorCode}, message=${errorMessage}`);
-    window.electron?.log?.fromRenderer?.('warn', 'VoiceInput', `browser speech recognition error; code=${errorCode}, message=${errorMessage}`);
-    terminalError = new AsrClientError(
-      errorMessage,
-      AsrApiCode.UpstreamError,
-    );
-    if (!stopRequested) onError(terminalError);
-    if (stopRequested) finishStop();
-  };
-  recognition.onend = () => {
-    if (stopRequested) finishStop();
-  };
-
-  try {
-    recognition.start();
-  } catch {
-    return null;
-  }
-
-  return {
-    maxSessionSeconds: 60,
-    quota: { usedSecondsToday: 0, remainingSecondsToday: 20 * 60, limitSecondsToday: 20 * 60 },
-    stop: async () => {
-      stopRequested = true;
-      await new Promise<void>((resolve, reject) => {
-        resolveStop = resolve;
-        rejectStop = reject;
-        try {
-          recognition.stop();
-        } catch (error) {
-          terminalError = new AsrClientError(error instanceof Error ? error.message : getFallbackAsrErrorMessage(AsrApiCode.UpstreamError), AsrApiCode.UpstreamError);
-          finishStop();
-          return;
-        }
-        stopFallbackTimer = setTimeout(finishStop, REALTIME_FINAL_WAIT_MS);
-      });
-      return getFinalText().trim();
-    },
-    cancel: () => {
-      stopRequested = true;
-      try { recognition.abort(); } catch { /* The browser session may already be closed. */ }
-      if (stopFallbackTimer) clearTimeout(stopFallbackTimer);
-      resolveStop = null;
-      rejectStop = null;
-    },
-  };
-};
-
 const waitForOpen = (socket: WebSocket): Promise<void> => new Promise((resolve, reject) => {
   const cleanup = () => {
     socket.removeEventListener('open', handleOpen);
@@ -297,9 +155,6 @@ export const startRealtimeVoiceInput = async ({
   onText,
   onError,
 }: StartRealtimeVoiceInputOptions): Promise<RealtimeVoiceInputSession> => {
-  const browserSession = startBrowserSpeechInput({ onText, onError });
-  if (browserSession) return browserSession;
-
   const session = await window.electron.asr.createRealtimeSession({
     // TODO: The current product is China-first. Revisit langType selection for international releases.
     langType: AsrLangType.ZhChs,

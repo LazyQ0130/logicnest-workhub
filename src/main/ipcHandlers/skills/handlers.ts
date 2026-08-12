@@ -2,8 +2,6 @@ import { ipcMain } from 'electron';
 import fs from 'fs';
 import path from 'path';
 
-import { toCatalogUrl } from '../../catalog/catalogProvider';
-import type { LicenseCatalogItem } from '../../license/licenseApiClient';
 import { updatePluginSkillIdsFromReport } from '../../skills';
 import type { SkillManager } from '../../skills/skillManager';
 
@@ -20,12 +18,10 @@ export interface SkillHandlerDeps {
       ) => Promise<T>;
     } | null;
   } | null;
-  getCatalog: (kind: LicenseCatalogItem['kind']) => Promise<{ items: LicenseCatalogItem[]; offline: boolean }>;
-  materializeCatalogAsset: (url: string) => Promise<string>;
 }
 
 export function registerSkillHandlers(deps: SkillHandlerDeps): void {
-  const { getSkillManager, getOpenClawRuntimeAdapter, getCatalog, materializeCatalogAsset } = deps;
+  const { getSkillManager, getOpenClawRuntimeAdapter } = deps;
 
   ipcMain.handle('skills:list', () => {
     try {
@@ -93,9 +89,8 @@ export function registerSkillHandlers(deps: SkillHandlerDeps): void {
   });
 
   ipcMain.handle('skills:download', async (_event, source: string) => {
-    const materializedSource = source.startsWith('catalog://') ? await materializeCatalogAsset(source) : source;
-    const resolvedSource = path.resolve(materializedSource);
-    if (!path.isAbsolute(materializedSource) || !fs.existsSync(resolvedSource)) {
+    const resolvedSource = path.resolve(source);
+    if (!path.isAbsolute(source) || !fs.existsSync(resolvedSource)) {
       return { success: false, error: 'Only an explicitly selected local skill folder or archive can be imported' };
     }
     return getSkillManager().downloadSkill(resolvedSource);
@@ -167,22 +162,8 @@ export function registerSkillHandlers(deps: SkillHandlerDeps): void {
   });
 
   ipcMain.handle('skills:fetchMarketplace', async () => {
-    try {
-      const catalog = await getCatalog('SKILL');
-      const marketplace = catalog.items.map((item) => ({
-        id: item.slug,
-        name: item.nameZh,
-        description: { zh: item.descriptionZh, en: item.descriptionEn || item.descriptionZh },
-        tags: item.tags,
-        url: toCatalogUrl(item, 'PAYLOAD'),
-        version: item.version,
-        source: { from: 'LogicNest WorkHub', url: '', author: 'LogicNest' },
-      }));
-      const data = JSON.stringify({ data: { value: { localSkill: [], marketplace, marketTags: [] } } });
-      return { success: true, data, offline: catalog.offline };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : '能力目录暂不可用' };
-    }
+    const data = JSON.stringify({ data: { value: { localSkill: [], marketplace: [], marketTags: [] } } });
+    return { success: true, data };
   });
 
   ipcMain.handle('skills:detectFromOpenClaw', async () => {

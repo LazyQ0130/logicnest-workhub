@@ -19,6 +19,7 @@ const SkillsView: React.FC<SkillsViewProps> = ({ isSidebarCollapsed, onToggleSid
   const isWindows = window.electron.platform === 'win32';
   return (
     <div
+      data-skin-management-page="true"
       className="relative z-10 flex-1 flex flex-col bg-background h-full"
     >
       <div className="draggable flex h-12 items-center justify-between px-4 border-b border-border shrink-0">

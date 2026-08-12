@@ -7,7 +7,6 @@ import {
   type AsrRealtimeSessionRequest,
   type AsrRealtimeSessionResult,
 } from '../../../shared/asr/constants';
-import { createLocalWindowsAsrSession } from './localWindowsAsr';
 
 type AuthTokens = {
   accessToken: string;
@@ -40,29 +39,20 @@ const getSafeWebSocketEndpoint = (wsUrl: string): string => {
 export interface AsrHandlerDeps {
   getAuthTokens: () => AuthTokens | null;
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
-  fetchWithLicenseAuth?: (url: string, options?: RequestInit) => Promise<Response>;
   getServerApiBaseUrl: () => string;
-  isLicenseAuthorized?: () => boolean;
 }
-
-export const buildAsrSessionUrl = (serverBaseUrl: string): string => {
-  const base = serverBaseUrl.replace(/\/+$/, '').replace(/\/api\/v1$/i, '');
-  return `${base}/api/asr/realtime/sessions`;
-};
 
 export function registerAsrIpcHandlers({
   getAuthTokens,
   fetchWithAuth,
-  fetchWithLicenseAuth,
   getServerApiBaseUrl,
-  isLicenseAuthorized,
 }: AsrHandlerDeps): void {
   ipcMain.handle(
     AsrIpcChannel.CreateRealtimeSession,
     async (_event, options?: AsrRealtimeSessionRequest): Promise<AsrRealtimeSessionResult> => {
       try {
         const tokens = getAuthTokens();
-        if (!tokens && !fetchWithLicenseAuth) {
+        if (!tokens) {
           console.warn('[ASR] realtime session request was rejected because no auth tokens are available');
           return { success: false, code: AsrApiCode.Unauthorized, error: 'Unauthorized' };
         }
@@ -73,16 +63,9 @@ export function registerAsrIpcHandlers({
         }
 
         const serverBaseUrl = getServerApiBaseUrl();
-        if (isLicenseAuthorized?.() && /^https?:\/\/127\.0\.0\.1(?::\d+)?\/api\/v1\/?$/i.test(serverBaseUrl)) {
-          const data = await createLocalWindowsAsrSession();
-          console.log(`[ASR] local Windows session created; requestId=${data.requestId}, wsEndpoint=${getSafeWebSocketEndpoint(data.wsUrl)}, maxSessionSeconds=${data.maxSessionSeconds}`);
-          return { success: true, data };
-        }
-
-        const requestUrl = buildAsrSessionUrl(serverBaseUrl);
+        const requestUrl = `${serverBaseUrl}/api/asr/realtime/sessions`;
         console.log(`[ASR] realtime session request started for ${requestUrl} with langType=${options?.langType || 'default'}`);
-        const authenticatedFetch = fetchWithLicenseAuth ?? fetchWithAuth;
-        const resp = await authenticatedFetch(requestUrl, {
+        const resp = await fetchWithAuth(requestUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8',

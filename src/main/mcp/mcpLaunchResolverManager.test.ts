@@ -53,10 +53,13 @@ test('isStaleInstallingResolution detects abandoned installs', () => {
 
 test('resolveNpmCommand prefers bundled npm-cli.js through Electron runtime', () => {
   const npmCommand = __mcpLaunchResolverTestUtils.resolveNpmCommand();
+  const expectedCache = path.join(process.cwd(), 'npm-cache');
 
   expect(npmCommand.command).toBe(process.execPath);
   expect(npmCommand.baseArgs[0]).toContain(path.join('node_modules', 'npm', 'bin', 'npm-cli.js'));
   expect(npmCommand.env.ELECTRON_RUN_AS_NODE).toBe('1');
+  expect(npmCommand.env.npm_config_cache).toBe(expectedCache);
+  expect(npmCommand.env.NPM_CONFIG_CACHE).toBe(expectedCache);
   expect(npmCommand.shell).toBe(false);
 });
 

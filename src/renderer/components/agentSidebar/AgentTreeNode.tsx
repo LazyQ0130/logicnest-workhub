@@ -66,13 +66,6 @@ const ACTION_MENU_VERTICAL_GAP = 4;
 const ACTION_MENU_HEIGHT = 104;
 const AGENT_TASKS_TRANSITION_MS = 200;
 
-export function getAgentHeaderStickyTopClassName(
-  displayMode: 'tasks' | 'assistants',
-  isPinned: boolean,
-): 'top-0' | 'top-10' {
-  return displayMode === 'assistants' || isPinned ? 'top-10' : 'top-0';
-}
-
 const AgentAvatar: React.FC<{ agent: AgentSidebarAgentNode }> = ({ agent }) => {
   if (shouldUseDefaultAgentIcon(agent)) {
     return <DefaultAgentIcon className="h-4 w-4" />;
@@ -298,11 +291,9 @@ const AgentTreeNode: React.FC<AgentTreeNodeProps> = ({
     void onToggleAgentPin(agent, !agent.pinned);
   };
 
-  const stickyTopClassName = getAgentHeaderStickyTopClassName(displayMode, agent.pinned);
-
   return (
     <div className="space-y-0.5">
-      <div className={`group sticky ${stickyTopClassName} ${isMenuOpen ? 'z-50' : 'z-20'} -ml-[6px] h-7 w-[calc(100%+12px)] bg-surface-raised`}>
+      <div className={`group sticky top-10 ${isMenuOpen ? 'z-50' : 'z-20'} -ml-[6px] h-7 w-[calc(100%+12px)] bg-surface-raised`}>
         <button
           type="button"
           onClick={handleAgentClick}

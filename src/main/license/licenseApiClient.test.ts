@@ -18,19 +18,12 @@ describe('LicenseApiClient', () => {
     }), { status: 200, headers: { 'content-type': 'application/json' } }));
     const client = new LicenseApiClient({ baseUrl: 'https://license.example/api/v1/', fetchImpl: fetchMock });
 
-    const result = await client.register({
-      phone: '13800000000',
-      password: 'password-1',
-      passwordConfirmation: 'password-1',
-      deviceFingerprint: 'device-fingerprint',
-      clientVersion: '1.0.0-test',
-    });
+    const result = await client.register({ phone: '13800000000', password: 'password-1', passwordConfirmation: 'password-1' });
 
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock.mock.calls[0]?.[0]).toBe('https://license.example/api/v1/auth/register');
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       phone: '13800000000', password: 'password-1', confirmPassword: 'password-1',
-      deviceFingerprint: 'device-fingerprint', clientVersion: '1.0.0-test',
     });
     expect(result).toMatchObject({
       user: { uid: 'LN-1', status: 'active' },
@@ -117,43 +110,6 @@ describe('LicenseApiClient', () => {
     expect(result).toMatchObject({
       membership: { status: 'none' },
       device: null,
-    });
-  });
-
-  test('reports certificate validation failures as a structured client error', async () => {
-    const certificateError = Object.assign(new Error('unable to verify the first certificate'), {
-      code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
-    });
-    const fetchMock = vi.fn<typeof fetch>().mockRejectedValue(certificateError);
-    const client = new LicenseApiClient({ baseUrl: 'https://license.example/api/v1', fetchImpl: fetchMock });
-
-    await expect(client.login({
-      phone: '+8613800000000',
-      password: 'password-1',
-      deviceFingerprint: 'device-fingerprint',
-      clientVersion: '1.0.0',
-    })).rejects.toMatchObject<Partial<LicenseApiError>>({
-      status: 495,
-      code: 'LICENSE_CERTIFICATE_ERROR',
-    });
-  });
-
-  test('reports catalog request timeouts as structured errors', async () => {
-    const fetchMock = vi.fn<typeof fetch>()
-      .mockImplementation((_input, init) => new Promise((_resolve, reject) => {
-        init?.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), {
-          name: 'AbortError',
-        })), { once: true });
-      }));
-    const client = new LicenseApiClient({
-      baseUrl: 'https://license.example/api/v1',
-      fetchImpl: fetchMock,
-      timeoutMs: 5,
-    });
-
-    await expect(client.catalog('token', 'KIT')).rejects.toMatchObject<Partial<LicenseApiError>>({
-      status: 408,
-      code: 'LICENSE_REQUEST_TIMEOUT',
     });
   });
 });

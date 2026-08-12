@@ -42,7 +42,7 @@ const AgentSkillSelector: React.FC<AgentSkillSelectorProps> = ({ selectedSkillId
       const localizedDescription = shouldUseFallbackDescription
         ? skillService.getLocalizedSkillDescription(skill.id, skill.name, skill.description)
         : '';
-      return skillService.getLocalizedSkillName(skill.id, skill.name).toLowerCase().includes(q) || localizedDescription.toLowerCase().includes(q);
+      return skill.name.toLowerCase().includes(q) || localizedDescription.toLowerCase().includes(q);
     });
   }, [enabledSkills, search, shouldUseFallbackDescription]);
 
@@ -107,7 +107,7 @@ const AgentSkillSelector: React.FC<AgentSkillSelectorProps> = ({ selectedSkillId
                   </div>
                   <div className="min-w-0 flex-1 pr-8">
                     <div className="truncate text-sm font-medium leading-5 text-foreground">
-                      {skillService.getLocalizedSkillName(skill.id, skill.name)}
+                      {skill.name}
                     </div>
                     {description && (
                       <div className="mt-1 line-clamp-2 text-xs leading-[18px] text-secondary/80">

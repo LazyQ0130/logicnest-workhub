@@ -14,7 +14,6 @@ import {
   removeAgentSidebarTaskPreviews,
   sortAgentSidebarAgents,
   sortAgentSidebarTasks,
-  toggleCollapsedWorkspaceKey,
 } from './useAgentSidebarState';
 
 const makeSession = (
@@ -30,7 +29,6 @@ const makeSession = (
   status,
   pinned,
   pinOrder,
-  cwd: '/tmp',
   agentId: 'main',
   createdAt,
   updatedAt,
@@ -125,13 +123,6 @@ test('deriveAgentSidebarIndicator prioritizes pending permission state', () => {
 
 test('collapseAgentSidebarTaskList resets one agent history list to preview mode', () => {
   expect(collapseAgentSidebarTaskList(['agent-1', 'agent-2'], 'agent-1')).toEqual(['agent-2']);
-});
-
-test('toggleCollapsedWorkspaceKey persists independent project collapse state', () => {
-  expect(toggleCollapsedWorkspaceKey(['project:a'], 'project:b'))
-    .toEqual(['project:a', 'project:b']);
-  expect(toggleCollapsedWorkspaceKey(['project:a', 'project:b'], 'project:a'))
-    .toEqual(['project:b']);
 });
 
 test('removeAgentSidebarTaskPreviews removes selected tasks across loaded agents', () => {

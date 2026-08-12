@@ -241,7 +241,19 @@ async function runCommand(
 }
 
 function resolveNpmCommand(): NpmCommand {
-  return resolveNodePackageCliCommand('npm');
+  const command = resolveNodePackageCliCommand('npm');
+  // npm may inherit a machine-level cache under Program Files, which is not
+  // writable by a normally launched Electron app. Keep MCP package installs
+  // in the app's writable user-data directory instead.
+  const cacheDir = path.join(app.getPath('userData'), 'npm-cache');
+  return {
+    ...command,
+    env: {
+      ...command.env,
+      npm_config_cache: cacheDir,
+      NPM_CONFIG_CACHE: cacheDir,
+    },
+  };
 }
 
 function resolveNodeCommand(): { command: string; env: Record<string, string> } {

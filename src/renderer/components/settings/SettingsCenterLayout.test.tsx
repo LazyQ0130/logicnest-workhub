@@ -139,29 +139,4 @@ describe('settings center layout interaction', () => {
     act(() => backButton?.click());
     expect(onBack).toHaveBeenCalledTimes(1);
   });
-
-  test('uses the settings toolbar as a window drag region without capturing controls', () => {
-    act(() => root.render(
-      <SettingsCenterToolbar
-        isHome
-        query=""
-        results={[]}
-        translate={translate}
-        onBack={vi.fn()}
-        onClose={vi.fn()}
-        onQueryChange={vi.fn()}
-        onResultSelect={vi.fn()}
-      />,
-    ));
-
-    const toolbar = container.querySelector('header');
-    const search = container.querySelector('input[type="search"]');
-    const toolbarButtons = container.querySelectorAll<HTMLButtonElement>('header button');
-    const closeButton = toolbarButtons.item(toolbarButtons.length - 1);
-
-    expect(toolbar?.classList.contains('draggable')).toBe(true);
-    expect(toolbar?.classList.contains('non-draggable')).toBe(false);
-    expect(search?.parentElement?.classList.contains('non-draggable')).toBe(true);
-    expect(closeButton?.classList.contains('non-draggable')).toBe(true);
-  });
 });

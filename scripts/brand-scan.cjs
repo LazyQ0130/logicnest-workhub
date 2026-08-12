@@ -12,16 +12,6 @@ const forbidden = [
   { label: 'upstream hardware CDN', pattern: /ydhardware(?:business|common)\.nosdn\.127\.net/i },
   { label: 'Windows Defender exclusion', pattern: /(?:Add|Set)-MpPreference/i },
 ];
-const approvedPinnedHardwareReferences = new Map([
-  [
-    'src/main/computerUse/computerUseRuntime.ts',
-    "DownloadUrl: 'https://ydhardwarebusiness.nosdn.127.net/806b908f1ba20905cc5c99495bccc69c.zip',",
-  ],
-  [
-    'src/shared/computerUse/constants.ts',
-    "BuiltIn: 'https://ydhardwarebusiness.nosdn.127.net/2fa564627a3f1a0f3acedbc771d15f12.zip',",
-  ],
-]);
 const ordinaryUiRoots = [
   'src/renderer/components/',
   'src/renderer/services/i18n.ts',
@@ -70,14 +60,7 @@ for (const file of files) {
   const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
   lines.forEach((line, index) => {
     for (const rule of forbidden) {
-      const approvedPinnedReference = rule.label === 'upstream hardware CDN'
-        && approvedPinnedHardwareReferences.get(relative) === line.trim();
-      const preservedUpstreamLicenseReference = rule.label === 'upstream Youdao domain'
-        && relative === 'services/license-server/prisma/catalogSeed.ts'
-        && line.includes('github.com/netease-youdao/LobsterAI');
-      if (rule.pattern.test(line) && !approvedPinnedReference && !preservedUpstreamLicenseReference) {
-        findings.push(`${relative}:${index + 1}: ${rule.label}`);
-      }
+      if (rule.pattern.test(line)) findings.push(`${relative}:${index + 1}: ${rule.label}`);
     }
     const isOrdinaryUiFile = ordinaryUiRoots.some((uiRoot) => relative.startsWith(uiRoot));
     const trimmed = line.trim();

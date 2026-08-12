@@ -408,7 +408,6 @@ const toSessionSummary = (session: CoworkSession): CoworkSessionSummary => ({
   status: session.status,
   pinned: session.pinned ?? false,
   pinOrder: session.pinOrder ?? null,
-  cwd: session.cwd,
   agentId: session.agentId,
   parentSessionId: session.parentSessionId ?? null,
   forkedAt: session.forkedAt ?? null,

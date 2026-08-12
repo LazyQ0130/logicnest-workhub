@@ -5,14 +5,6 @@ import type { SqliteStore } from '../sqliteStore';
 
 let cachedTestMode: boolean | null = null;
 const DISABLED_LOCAL_ENDPOINT = 'http://127.0.0.1:1';
-const LOCAL_LICENSE_API_ENDPOINT = 'http://127.0.0.1:8787/api/v1';
-const PACKAGED_LICENSE_API_ENDPOINT = 'https://43.251.225.201/api/v1';
-
-const configuredLicenseApiEndpoint = (): string => {
-  const value = process.env.LOGICNEST_LICENSE_API_URL?.trim();
-  if (value) return value;
-  return app.isPackaged ? PACKAGED_LICENSE_API_ENDPOINT : LOCAL_LICENSE_API_ENDPOINT;
-};
 
 /**
  * Read testMode from store and cache it.
@@ -36,18 +28,18 @@ export const isTestModeEnabled = (): boolean => {
  * Used for auth exchange/refresh, models, proxy, etc.
  */
 export const getServerApiBaseUrl = (): string => {
-  return configuredLicenseApiEndpoint();
+  return DISABLED_LOCAL_ENDPOINT;
 };
 
 export const getHtmlSharePublicBaseUrl = (): string => {
   return `${getServerApiBaseUrl()}${HtmlSharePublicRoute.Root}`;
 };
 
-export const getUpdateCheckUrl = (): string => `${configuredLicenseApiEndpoint()}/app-updates/check`;
+export const getUpdateCheckUrl = (): string => `${DISABLED_LOCAL_ENDPOINT}/update-disabled`;
 
-export const getManualUpdateCheckUrl = (): string => `${configuredLicenseApiEndpoint()}/app-updates/check`;
+export const getManualUpdateCheckUrl = (): string => `${DISABLED_LOCAL_ENDPOINT}/update-disabled`;
 
-export const getFallbackDownloadUrl = (): string => `${configuredLicenseApiEndpoint()}/app-updates/unavailable`;
+export const getFallbackDownloadUrl = (): string => `${DISABLED_LOCAL_ENDPOINT}/download-disabled`;
 
 export const getSkillStoreUrl = (): string => `${DISABLED_LOCAL_ENDPOINT}/skill-store-disabled`;
 

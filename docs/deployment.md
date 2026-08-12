@@ -13,11 +13,9 @@
 5. 设置精确 `ALLOWED_ORIGINS`、`REQUIRE_HTTPS=true`；若经受控代理转发，再设置 `TRUST_PROXY=true`。
 6. 执行 `prisma migrate deploy` 和套餐 seed，使用一次性环境变量运行 `npm run admin:bootstrap`，首次登录后修改密码并移除 bootstrap 变量。
 7. 构建管理后台，将 `/api/` 反向代理到授权服务，并在外层启用 TLS、HSTS 和访问日志脱敏。
-8. 构建桌面端前设置生产 `LOGICNEST_LICENSE_API_URL` 与对应的 Ed25519 公钥（`LOGICNEST_LICENSE_PUBLIC_KEY_PEM`、`LOGICNEST_LICENSE_PUBLIC_KEY_FILE` 或 `LOGICNEST_LICENSE_PUBLIC_KEY_B64` 三选一），完成代码签名后发布。打包会校验 HTTPS 地址和公钥，并把只读的公开配置写入安装包；缺失或无效时构建直接失败。
+8. 构建桌面端前设置生产 `LOGICNEST_LICENSE_API_URL` 与对应公钥，完成代码签名后发布。
 
 仓库中的 `npm run dist:win` 当前显式设置 `LOGICNEST_UNSIGNED_BUILD=1`，用于非管理员开发机生成验收包。正式 CI 必须移除该标志，配置受控签名函数/证书，并在发布前验证 Authenticode 发布者、时间戳和文件哈希。
-
-Windows 正式交付使用 `npm run dist:win:release`。该命令会接入 `scripts/win-sign.cjs`，并在签名服务 URL、应用凭据或审计用户名缺失时终止构建。`npm run dist:win` 生成的文件名会明确包含 `unsigned`；本地 HTTP 授权 QA 包还会包含 `qa-local`，两者均不得对外交付。
 
 `services/license-server/docker-compose.yml` 可作为单机参考。它只把 API 绑定到回环地址，MySQL 不映射宿主机端口。命名卷是持久数据；升级、回滚和测试均不得删除生产卷。
 

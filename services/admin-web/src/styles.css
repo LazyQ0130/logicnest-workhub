@@ -507,17 +507,6 @@ textarea {
 
 .mobile-generate-button { display: none; }
 
-.catalog-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 12px;
-}
-
-.catalog-toolbar .ant-tabs { min-width: 360px; margin-bottom: -12px; }
-.catalog-slug { font-size: 12px; }
-
 .auth-page {
   position: relative;
   display: grid;
@@ -582,7 +571,6 @@ textarea {
 .auth-security-note { display: flex; align-items: center; gap: 7px; margin-top: 22px; color: #5f5f66; font-size: 11px; }
 .security-dot { width: 7px; height: 7px; border-radius: 50%; background: #2ebd85; box-shadow: 0 0 0 4px rgba(46, 189, 133, 0.12); }
 .password-card { max-width: 500px; }
-.password-form-actions { width: 100%; }
 .force-change-icon { display: grid; width: 48px; height: 48px; margin-bottom: 18px; place-items: center; border-radius: 14px; color: #3f3f46; background: #eeeeec; font-size: 24px; }
 
 @media (max-width: 1100px) {
@@ -619,8 +607,6 @@ textarea {
   .stat-card .ant-statistic-content { font-size: 25px; }
   .quick-action-grid { grid-template-columns: 1fr; }
   .generated-key-list { grid-template-columns: 1fr; }
-  .catalog-toolbar { align-items: stretch; flex-direction: column; }
-  .catalog-toolbar .ant-tabs { min-width: 0; }
   .mobile-generate-button { display: inline-flex; margin-top: 12px; }
   .login-card { padding: 28px 22px; }
 }

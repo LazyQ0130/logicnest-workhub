@@ -1,3 +1,4 @@
+import type { SkinPreferredAppearance } from '../../shared/skin/constants';
 import type { ThemeDefinition } from '../theme';
 import { allThemes, ThemeManager } from '../theme';
 import { configService } from './config';
@@ -27,6 +28,7 @@ class ThemeService {
   private mediaQuery: MediaQueryList | null = null;
   private currentTheme: ThemeMode = 'system';
   private defaultThemeId = DEFAULT_THEME_ID;
+  private activeSkinThemeId: string | null = null;
   private initialized = false;
   private mediaQueryListener: ((event: MediaQueryListEvent) => void) | null = null;
   private manager: ThemeManager;
@@ -59,6 +61,7 @@ class ThemeService {
 
       this.currentTheme = mode;
       this.defaultThemeId = target?.meta.id ?? DEFAULT_THEME_ID;
+      this.activeSkinThemeId = null;
       if (target) {
         void this.manager.setTheme(target.meta.id);
         if (config.themeId !== target.meta.id) {
@@ -70,7 +73,7 @@ class ThemeService {
 
       if (this.mediaQuery) {
         this.mediaQueryListener = (event) => {
-          if (this.currentTheme !== 'system') {
+          if (this.currentTheme !== 'system' || this.activeSkinThemeId) {
             return;
           }
           void this.applySystemAppearance(event.matches ? 'dark' : 'light').catch((error) => {
@@ -92,6 +95,7 @@ class ThemeService {
         this.defaultThemeId,
       );
       this.currentTheme = theme;
+      this.activeSkinThemeId = null;
       if (target) {
         this.defaultThemeId = target.meta.id;
         void this.manager.setTheme(target.meta.id);
@@ -103,6 +107,7 @@ class ThemeService {
     if (!target) return;
     this.currentTheme = target.meta.appearance;
     this.defaultThemeId = target.meta.id;
+    this.activeSkinThemeId = null;
     void this.manager.setTheme(target.meta.id);
   }
 
@@ -158,11 +163,75 @@ class ThemeService {
     });
   }
 
+  async applySkinTheme(themeId: string): Promise<void> {
+    const target = this.getThemeDefinition(themeId);
+    if (!target) {
+      throw new Error(`Unknown skin theme id "${themeId}"`);
+    }
+    this.activeSkinThemeId = target.meta.id;
+    await this.manager.setTheme(target.meta.id);
+  }
+
+  async restoreDefaultTheme(): Promise<ThemeSelection> {
+    const target = this.resolveThemeForAppearance(
+      this.resolveModeAppearance(this.currentTheme),
+      this.defaultThemeId,
+    );
+    if (!target) {
+      throw new Error(`No theme is available for mode "${this.currentTheme}"`);
+    }
+
+    this.activeSkinThemeId = null;
+    this.defaultThemeId = target.meta.id;
+    await this.manager.setTheme(target.meta.id);
+
+    const config = configService.getConfig();
+    if (config.theme !== this.currentTheme || config.themeId !== target.meta.id) {
+      await configService.updateConfig({
+        theme: this.currentTheme,
+        themeId: target.meta.id,
+      });
+    }
+    this.dispatchDefaultChanged();
+    return this.getDefaultSelection();
+  }
+
+  resolveSkinThemeId(
+    boundThemeId: string | undefined,
+    preferredAppearance: SkinPreferredAppearance | undefined,
+  ): string {
+    const boundTheme = boundThemeId
+      ? this.getThemeDefinition(boundThemeId)
+      : undefined;
+    if (
+      boundTheme
+      && (!preferredAppearance || boundTheme.meta.appearance === preferredAppearance)
+    ) {
+      return boundTheme.meta.id;
+    }
+
+    const defaultTheme = this.getThemeDefinition(this.defaultThemeId);
+    if (
+      defaultTheme
+      && (!preferredAppearance || defaultTheme.meta.appearance === preferredAppearance)
+    ) {
+      return defaultTheme.meta.id;
+    }
+
+    if (preferredAppearance) {
+      const compatibleTheme = this.resolveThemeForAppearance(preferredAppearance);
+      if (compatibleTheme) return compatibleTheme.meta.id;
+    }
+
+    return defaultTheme?.meta.id ?? allThemes[0]?.meta.id ?? DEFAULT_THEME_ID;
+  }
+
   private async persistAndApplyDefaultSelection(
     selection: ThemeSelection,
   ): Promise<ThemeSelection> {
     const previousSelection = this.getDefaultSelection();
     const previousEffectiveThemeId = this.manager.getThemeId();
+    const previousSkinThemeId = this.activeSkinThemeId;
 
     try {
       await configService.updateConfig({
@@ -171,10 +240,12 @@ class ThemeService {
       });
       this.currentTheme = selection.mode;
       this.defaultThemeId = selection.themeId;
+      this.activeSkinThemeId = null;
       await this.manager.setTheme(selection.themeId);
     } catch (error) {
       this.currentTheme = previousSelection.mode;
       this.defaultThemeId = previousSelection.themeId;
+      this.activeSkinThemeId = previousSkinThemeId;
       await this.manager.setTheme(previousEffectiveThemeId).catch(() => undefined);
       throw error;
     }
