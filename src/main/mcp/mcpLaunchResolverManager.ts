@@ -17,8 +17,8 @@ import {
 import type { McpServerRecord } from './mcpStore';
 import { McpStore } from './mcpStore';
 
-const INSTALL_TIMEOUT_MS = 120_000;
-const NPM_VIEW_TIMEOUT_MS = 20_000;
+const INSTALL_TIMEOUT_MS = 10 * 60_000;
+const NPM_VIEW_TIMEOUT_MS = 60_000;
 const STALE_INSTALLING_MS = INSTALL_TIMEOUT_MS + 30_000;
 
 type RunResult = {
@@ -256,6 +256,13 @@ function resolveNpmCommand(): NpmCommand {
   };
 }
 
+function buildInstallEnv(packageName: string, env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  if (packageName === '@executeautomation/playwright-mcp-server') {
+    return { ...env, PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1' };
+  }
+  return env;
+}
+
 function resolveNodeCommand(): { command: string; env: Record<string, string> } {
   const runtime = resolveNodeRuntimeForSpawn();
   return { command: runtime.command, env: runtime.env as Record<string, string> };
@@ -426,7 +433,11 @@ export class McpLaunchResolverManager {
           '--no-fund',
           parsed.installSpec,
         ],
-        { env: npm.env, shell: npm.shell, timeoutMs: INSTALL_TIMEOUT_MS },
+        {
+          env: buildInstallEnv(parsed.packageName, npm.env),
+          shell: npm.shell,
+          timeoutMs: INSTALL_TIMEOUT_MS,
+        },
       );
       log(
         'INFO',
