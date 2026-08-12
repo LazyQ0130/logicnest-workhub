@@ -32,6 +32,7 @@ import {
 } from '../../../shared/site/constants';
 import { copyTextToClipboard } from '../../services/clipboard';
 import { i18nService } from '../../services/i18n';
+import { formatUserFacingError } from '../../services/userFacingError';
 import Modal from '../common/Modal';
 import Cog6ToothIcon from '../icons/Cog6ToothIcon';
 import EllipsisHorizontalIcon from '../icons/EllipsisHorizontalIcon';
@@ -530,7 +531,6 @@ const SitesView: React.FC<SitesViewProps> = ({
   if (!isAuthenticated) {
     return (
       <div
-        data-skin-management-page="true"
         className="relative z-10 flex h-full flex-col bg-background"
       >
         <SitesTopBar
@@ -570,7 +570,6 @@ const SitesView: React.FC<SitesViewProps> = ({
     };
     return (
       <div
-        data-skin-management-page="true"
         className="relative z-10 flex h-full min-h-0 flex-col bg-background"
       >
         <SitesTopBar
@@ -626,7 +625,7 @@ const SitesView: React.FC<SitesViewProps> = ({
         <main className="min-h-0 flex-1 overflow-y-auto p-6">
           {actionError && (
             <div className="mb-4 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-sm text-red-600">
-              {actionError}
+              {formatUserFacingError(actionError)}
             </div>
           )}
           {readOnly && detailTab === 'settings' && (
@@ -948,7 +947,7 @@ const SitesView: React.FC<SitesViewProps> = ({
                 : i18nService.t('sitesStaticStopConfirm')
               : i18nService.t('sitesResumeConfirm')}
           </p>
-          {actionError && <p className="mt-3 text-sm text-red-600">{actionError}</p>}
+          {actionError && <p className="mt-3 text-sm text-red-600">{formatUserFacingError(actionError)}</p>}
           <div className="mt-6 flex justify-end gap-2">
             <button
               type="button"
@@ -1014,7 +1013,7 @@ const SitesView: React.FC<SitesViewProps> = ({
             autoComplete="off"
             className="mt-2 h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-foreground outline-none transition-colors focus:border-red-500"
           />
-          {actionError && <p className="mt-3 text-sm text-red-600">{actionError}</p>}
+          {actionError && <p className="mt-3 text-sm text-red-600">{formatUserFacingError(actionError)}</p>}
           <div className="mt-6 flex justify-end gap-2">
             <button
               type="button"
@@ -1106,7 +1105,6 @@ const SitesView: React.FC<SitesViewProps> = ({
   );
   return (
     <div
-      data-skin-management-page="true"
       className="relative z-10 flex h-full min-h-0 flex-col overflow-x-auto overflow-y-hidden bg-background"
     >
       <div className="min-w-[720px] shrink-0">
@@ -1170,7 +1168,7 @@ const SitesView: React.FC<SitesViewProps> = ({
         <div className="mx-auto w-full max-w-[840px] px-6 pb-6">
           {listError && (
             <div className="mb-3 flex items-center justify-between rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-sm text-red-600">
-              <span>{listError}</span>
+              <span>{formatUserFacingError(listError, { fallbackKey: 'sitesLoadFailed' })}</span>
               <button type="button" onClick={() => void loadSites()} className="font-medium">
                 {i18nService.t('retry')}
               </button>
@@ -1439,7 +1437,7 @@ const SitesView: React.FC<SitesViewProps> = ({
                 </p>
               )}
 
-            {shareError && <p className="mt-3 text-xs text-red-600">{shareError}</p>}
+            {shareError && <p className="mt-3 text-xs text-red-600">{formatUserFacingError(shareError)}</p>}
 
             <div className="mt-5 flex justify-end gap-2 border-t border-border pt-4">
               <button

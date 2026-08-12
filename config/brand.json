@@ -41,7 +41,7 @@
   },
   "features": {
     "analytics": false,
-    "officialUpdates": false,
+    "officialUpdates": true,
     "remoteExpertKits": false,
     "unauditedImChannels": false
   },
@@ -49,7 +49,18 @@
     "visibleThemeIds": [
       "classic-light",
       "classic-dark",
-      "paper"
+      "dawn",
+      "daylight",
+      "paper",
+      "sakura",
+      "midnight",
+      "ocean",
+      "emerald",
+      "rose",
+      "mocha",
+      "sunset",
+      "nord",
+      "cyber"
     ]
   },
   "assets": {

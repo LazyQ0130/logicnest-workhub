@@ -26,6 +26,8 @@ import {
   isComputerUseKitSupportedPlatform,
   removeComputerUseSkillArtifacts,
 } from '../../computerUse/computerUseKit';
+import { toCatalogUrl } from '../../catalog/catalogProvider';
+import type { LicenseCatalogItem } from '../../license/licenseApiClient';
 import {
   installComputerUseRuntime,
   uninstallComputerUseRuntime,
@@ -33,12 +35,13 @@ import {
 import { cpRecursiveSync } from '../../fsCompat';
 import { OpenClawConfigImpact } from '../../libs/openclawConfigImpact';
 import type { SkillManager } from '../../skills/skillManager';
-import { createSkinPackKitLifecycle } from '../../skins/skinPackKitLifecycle';
 import type { SqliteStore } from '../../sqliteStore';
 
 const KITS_INSTALLED_KEY: KitStoreKey = KitStoreKeyValue.Installed;
 const SKILLS_DIR_NAME = 'SKILLs';
 const SKILL_FILE_NAME = 'SKILL.md';
+const RETIRED_APPEARANCE_KIT_ID = 'ai-skin-designer';
+const RETIRED_APPEARANCE_SKILL_ID = 'skin-creator';
 
 function downloadBuffer(url: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -74,6 +77,8 @@ export interface KitHandlerDeps {
     restartGatewayIfRunning?: boolean;
     expectedImpact?: OpenClawConfigImpact;
   }) => Promise<{ success: boolean; changed: boolean; error?: string }>;
+  getCatalog: (kind: LicenseCatalogItem['kind']) => Promise<{ items: LicenseCatalogItem[]; offline: boolean }>;
+  materializeCatalogAsset: (url: string) => Promise<string>;
 }
 
 function sha256Buffer(buffer: Buffer): string {
@@ -126,6 +131,10 @@ const normalizeKitSkillMetadataList = (value: unknown): Map<string, KitSkillMeta
 
   return metadata;
 };
+
+const normalizeKitSkillMetadataArray = (value: unknown): KitSkillMetadata[] => (
+  Array.from(normalizeKitSkillMetadataList(value).values())
+);
 
 function getSkillsRoot(): string {
   return path.resolve(app.getPath('userData'), SKILLS_DIR_NAME);
@@ -204,23 +213,60 @@ function notifySkillsChanged(): void {
 }
 
 export function registerKitHandlers(deps: KitHandlerDeps): void {
-  const { getStore, getKitStoreUrl, getSkillManager, syncOpenClawConfig } = deps;
-  const skinPackKitLifecycle = createSkinPackKitLifecycle({
-    getStore,
-    getSkillManager,
-    notifySkillsChanged,
-    syncOpenClawConfig,
-  });
+  const { getStore, getKitStoreUrl, getSkillManager, syncOpenClawConfig, getCatalog, materializeCatalogAsset } = deps;
   const getAdditionalBuiltInKits = (): Record<string, unknown>[] => (
     isComputerUseKitSupportedPlatform() ? [buildComputerUseMarketplaceKit()] : []
   );
+  const buildOfflineStoreResponse = (): string => JSON.stringify({
+    data: { value: { kits: getAdditionalBuiltInKits() } },
+  });
+  const removeRetiredAppearanceState = (): void => {
+    const store = getStore();
+    const installedMap = store.get<InstalledKitsMap>(KITS_INSTALLED_KEY) ?? {};
+    const stateMap = store.get<Record<string, { enabled: boolean }>>('skills_state') ?? {};
+    let changed = false;
+    if (installedMap[RETIRED_APPEARANCE_KIT_ID]) {
+      delete installedMap[RETIRED_APPEARANCE_KIT_ID];
+      store.set(KITS_INSTALLED_KEY, installedMap);
+      changed = true;
+    }
+    if (stateMap[RETIRED_APPEARANCE_SKILL_ID]) {
+      delete stateMap[RETIRED_APPEARANCE_SKILL_ID];
+      store.set('skills_state', stateMap);
+      changed = true;
+    }
+    if (changed) notifySkillsChanged();
+  };
 
   // Fetch kit store catalog from overmind
   ipcMain.handle('kits:fetchStore', async () => {
+    try {
+      const catalog = await getCatalog('KIT');
+      const kits = catalog.items.map((item) => ({
+        id: item.slug,
+        name: { zh: item.nameZh, en: item.nameEn || item.nameZh },
+        description: { zh: item.descriptionZh, en: item.descriptionEn || item.descriptionZh },
+        version: item.version,
+        ...(typeof item.metadata.author === 'string' ? { author: item.metadata.author } : {}),
+        ...(typeof item.metadata.icon === 'string' ? { icon: item.metadata.icon } : {}),
+        ...(Array.isArray(item.metadata.tryAsking) ? { tryAsking: item.metadata.tryAsking } : {}),
+        tags: item.tags,
+        skills: {
+          bundle: toCatalogUrl(item, 'PAYLOAD'),
+          list: normalizeKitSkillMetadataArray(item.metadata.skills),
+        },
+        mcpServers: item.metadata.server ? [item.metadata.server] : null,
+        connectors: null as unknown[] | null,
+      }));
+      const data = JSON.stringify({ data: { value: { kits } } });
+      return { success: true, data, offline: catalog.offline };
+    } catch (error) {
+      console.warn('[KitStore] catalog fetch failed, using local built-ins', error);
+    }
     if (!BRAND.features.remoteExpertKits) {
       return {
         success: true,
-        data: skinPackKitLifecycle.buildOfflineStoreResponse(getAdditionalBuiltInKits()),
+        data: buildOfflineStoreResponse(),
       };
     }
     const url = getKitStoreUrl();
@@ -245,13 +291,13 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
       });
       return {
         success: true,
-        data: skinPackKitLifecycle.appendToStoreResponse(data, getAdditionalBuiltInKits()),
+        data,
       };
     } catch (error) {
       console.error('[KitStore] fetch failed:', error);
       return {
         success: true,
-        data: skinPackKitLifecycle.buildOfflineStoreResponse(getAdditionalBuiltInKits()),
+        data: buildOfflineStoreResponse(),
         warning: error instanceof Error ? error.message : 'Failed to fetch kit store',
       };
     }
@@ -260,6 +306,7 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
   // List installed kits
   ipcMain.handle('kits:listInstalled', () => {
     try {
+      removeRetiredAppearanceState();
       const map = getStore().get<InstalledKitsMap>(KITS_INSTALLED_KEY) ?? {};
       return { success: true, installed: map };
     } catch (error) {
@@ -277,31 +324,35 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
     mcpServers?: unknown[] | null;
     connectors?: unknown[] | null;
   }) => {
-    const { kitId, bundleUrl, version, skillListIds: _skillListIds } = params;
+    const { kitId, version, skillListIds: _skillListIds } = params;
+    let bundleUrl = params.bundleUrl;
     const isComputerUseKit = kitId === ComputerUseKitId.BuiltIn;
+    const isCatalogBundle = bundleUrl.startsWith('catalog://');
     console.log(`[KitStore] Installing kit "${kitId}" v${version} from ${bundleUrl}`);
 
     let tempRoot: string | null = null;
     let skillWatchingStopped = false;
     let skillWatchingRestarted = false;
     try {
-      if (isComputerUseKit && bundleUrl !== ComputerUseKitBundle.BuiltIn) {
+      if (isComputerUseKit && isCatalogBundle) {
+        bundleUrl = await materializeCatalogAsset(bundleUrl);
+      }
+      if (!isComputerUseKit && params.bundleUrl.startsWith('catalog://')) {
+        bundleUrl = await materializeCatalogAsset(params.bundleUrl);
+      }
+      if (isComputerUseKit && !isCatalogBundle && bundleUrl !== ComputerUseKitBundle.BuiltIn) {
         throw new Error('Computer Use kit bundle URL does not match the built-in catalog entry');
       }
       if (isComputerUseKit && !isComputerUseKitSupportedPlatform()) {
         throw new Error('Computer Use kit is only available on Windows x64.');
       }
-      const skinPackInstallResult = await skinPackKitLifecycle.installIfHandled({ kitId, bundleUrl });
-      if (skinPackInstallResult !== undefined) {
-        return skinPackInstallResult;
-      }
-      if (!BRAND.features.remoteExpertKits && !isComputerUseKit) {
+      if (!BRAND.features.remoteExpertKits && !isComputerUseKit && !isCatalogBundle) {
         throw new Error('Remote expert kits are disabled in LogicNest WorkHub');
       }
 
       // 1. Download zip
       tempRoot = fs.mkdtempSync(path.join(app.getPath('temp'), 'lobsterai-kit-'));
-      const buffer = await downloadBuffer(bundleUrl);
+      const buffer = path.isAbsolute(bundleUrl) ? fs.readFileSync(bundleUrl) : await downloadBuffer(bundleUrl);
       if (isComputerUseKit) {
         if (buffer.length !== ComputerUseKitBundleIntegrity.SizeBytes) {
           throw new Error('Computer Use kit bundle size verification failed');
@@ -334,7 +385,17 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
       }
 
       if (isComputerUseKit) {
-        const runtimeResult = await installComputerUseRuntime();
+        let catalogRuntimePath: string | undefined;
+        if (isCatalogBundle) {
+          const catalog = await getCatalog('KIT');
+          const catalogItem = catalog.items.find((item) => item.slug === kitId);
+          const runtimeAsset = catalogItem?.assets.find((asset) => asset.role === 'RUNTIME');
+          if (!catalogItem || !runtimeAsset) {
+            throw new Error('电脑操作运行时尚未发布，请联系管理员更新目录。');
+          }
+          catalogRuntimePath = await materializeCatalogAsset(toCatalogUrl(catalogItem, 'RUNTIME'));
+        }
+        const runtimeResult = await installComputerUseRuntime(undefined, catalogRuntimePath);
         if (!runtimeResult.success) {
           throw new Error(runtimeResult.error || 'Computer Use runtime installation failed');
         }
@@ -447,11 +508,6 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
     let skillWatchingStopped = false;
     let skillWatchingRestarted = false;
     try {
-      const skinPackUninstallResult = await skinPackKitLifecycle.uninstallIfHandled(kitId);
-      if (skinPackUninstallResult !== undefined) {
-        return skinPackUninstallResult;
-      }
-
       const installedMap = getInstalledKitsMap(getStore());
       const kitRecord = installedMap[kitId];
       if (!kitRecord) {

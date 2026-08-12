@@ -11,6 +11,7 @@ import {
 } from '../../../shared/providers';
 import { defaultConfig, getCustomProviderDefaultName, getProviderDisplayName, isCustomProvider } from '../../config';
 import { i18nService } from '../../services/i18n';
+import { formatUserFacingError } from '../../services/userFacingError';
 import EditIcon from '../icons/EditIcon';
 import PlusCircleIcon from '../icons/PlusCircleIcon';
 import { GitHubCopilotIcon } from '../icons/providers';
@@ -267,7 +268,7 @@ export const ModelEditorDialog: React.FC<ModelEditorDialogProps> = ({
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 [scrollbar-gutter:stable]">
           {modelFormError && (
             <p className="mb-3 text-xs text-red-600 dark:text-red-400">
-              {modelFormError}
+              {formatUserFacingError(modelFormError, { fallbackKey: 'failedToSaveSettings' })}
             </p>
           )}
 
@@ -1525,7 +1526,7 @@ const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
                         {i18nService.t('githubCopilotSignIn')}
                       </button>
                       {copilotError && (
-                        <p className="text-xs text-red-500 dark:text-red-400">{copilotError}</p>
+                        <p className="text-xs text-red-500 dark:text-red-400">{formatUserFacingError(copilotError)}</p>
                       )}
                     </div>
                   )}

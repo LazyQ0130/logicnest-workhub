@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 
 import { collectSessionArtifacts, loadDetectedFileArtifact } from '../../services/artifactDetection';
 import { i18nService } from '../../services/i18n';
+import { formatUserFacingError } from '../../services/userFacingError';
 import { type Artifact, PREVIEWABLE_ARTIFACT_TYPES } from '../../types/artifact';
 import type { CoworkMessage, CoworkSession } from '../../types/cowork';
 import { showShellFailureToast } from '../../utils/localFileActions';
@@ -307,7 +308,7 @@ const RunSessionModal: React.FC<RunSessionModalProps> = ({
 
           {error && (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
-              <span className="text-sm text-secondary">{error}</span>
+              <span className="text-sm text-secondary">{formatUserFacingError(error, { fallbackKey: 'scheduledTasksRunFailed' })}</span>
               <button
                 type="button"
                 onClick={handleManualRetry}

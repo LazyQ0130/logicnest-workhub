@@ -11,7 +11,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import type { SkillSecurityReport as SkillSecurityReportData } from '../../../main/libs/skillSecurity/skillSecurityTypes';
 import { ENABLE_OPENCLAW_SKILL_SYNC } from '../../../shared/featureFlags';
 import { i18nService } from '../../services/i18n';
-import { compareVersions,resolveLocalizedText, skillService } from '../../services/skill';
+import { isSkillUpdateAvailable, resolveLocalizedText, skillService } from '../../services/skill';
 import { RootState } from '../../store';
 import { setSkills } from '../../store/slices/skillSlice';
 import { MarketplaceSkill, MarketTag,Skill } from '../../types/skill';
@@ -222,7 +222,7 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
   const filteredSkills = useMemo(() => {
     const query = skillSearchQuery.trim().replace(/\s+/g, ' ').toLowerCase();
     return skills.filter(skill => {
-      const matchesSearch = skill.name.toLowerCase().includes(query)
+      const matchesSearch = skillService.getLocalizedSkillName(skill.id, skill.name).toLowerCase().includes(query)
         || skillService.getLocalizedSkillDescription(skill.id, skill.name, skill.description).toLowerCase().includes(query);
       return matchesSearch;
     });
@@ -592,18 +592,17 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
   const getSkillInstallStatus = (marketplaceSkill: MarketplaceSkill): 'not_installed' | 'installed' | 'update_available' => {
     const installed = skills.find(s => s.id === marketplaceSkill.id);
     if (!installed) return 'not_installed';
-    if (!marketplaceSkill.version) return 'installed';
-    const localVersion = installed.version || '0.0.0';
-    if (compareVersions(marketplaceSkill.version, localVersion) > 0) return 'update_available';
+    // Old clients did not write a version into SKILL.md. An unknown local
+    // version cannot be compared safely, so it must not trigger a false update.
+    if (isSkillUpdateAvailable(marketplaceSkill.version, installed.version)) return 'update_available';
     return 'installed';
   };
 
   const updatableSkills = useMemo(() => {
     return marketplaceSkills.filter(ms => {
       const installed = skills.find(s => s.id === ms.id);
-      if (!installed || !ms.version) return false;
-      const localVersion = installed.version || '0.0.0';
-      return compareVersions(ms.version, localVersion) > 0;
+      if (!installed) return false;
+      return isSkillUpdateAvailable(ms.version, installed.version);
     });
   }, [skills, marketplaceSkills]);
 
@@ -836,7 +835,6 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
 
       {/* Sticky toolbar: Description + Search + Tabs + Tag pills */}
       <div
-        data-skin-management-toolbar="true"
         className="sticky top-0 z-10 space-y-4 bg-background pb-4"
       >
         {/* Search + Add button */}
@@ -1107,7 +1105,7 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
                     <SkillIcon className="h-4 w-4 text-primary" />
                   </div>
                   <span className="text-sm font-medium text-foreground truncate">
-                    {skill.name}
+                    {skillService.getLocalizedSkillName(skill.id, skill.name)}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
@@ -1164,7 +1162,7 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
                 </div>
                 {(() => {
                   const mp = marketplaceSkills.find(m => m.id === skill.id);
-                  if (mp && mp.version && compareVersions(mp.version, skill.version || '0.0.0') > 0) {
+                  if (mp && isSkillUpdateAvailable(mp.version, skill.version)) {
                     return (
                       <button
                         type="button"
@@ -1251,7 +1249,7 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
                       <SkillIcon className="h-4 w-4 text-primary" />
                     </div>
                     <span className="text-sm font-medium text-foreground truncate">
-                      {skill.name}
+                      {skillService.getLocalizedSkillName(skill.id, skill.name)}
                     </span>
                   </div>
                   <div className="flex-shrink-0">
@@ -1310,7 +1308,7 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
                     <>
                       {(() => {
                         const installedVer = getInstalledVersion(skill.id);
-                        if (installedVer && compareVersions(skill.version, installedVer) > 0) {
+                        if (isSkillUpdateAvailable(skill.version, installedVer)) {
                           return (
                             <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium">
                               v{installedVer} → v{skill.version}
@@ -1484,7 +1482,7 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
                 </div>
                 <div className="min-w-0">
                   <div className="text-base font-semibold text-foreground truncate">
-                    {selectedSkill.name}
+                    {skillService.getLocalizedSkillName(selectedSkill.id, selectedSkill.name)}
                   </div>
                 </div>
               </div>
@@ -1795,7 +1793,7 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
             <div className="mb-4 max-h-40 overflow-y-auto rounded-md border border-border bg-surface-raised p-2 space-y-1.5">
               {detectedOpenClawSkills.map(skill => (
                 <div key={skill.skillKey} className="flex items-baseline gap-2 px-1">
-                  <span className="shrink-0 text-xs font-medium text-foreground bg-background border border-border rounded px-1.5 py-0.5">{skill.name}</span>
+                  <span className="shrink-0 text-xs font-medium text-foreground bg-background border border-border rounded px-1.5 py-0.5">{skillService.getLocalizedSkillName(skill.skillKey, skill.name)}</span>
                   {skill.description && (
                     <span className="text-[11px] text-muted-foreground truncate">{skill.description}</span>
                   )}

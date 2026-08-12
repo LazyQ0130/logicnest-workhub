@@ -5,6 +5,7 @@ import { OpenClawEngineErrorCode, OpenClawGatewayRepairErrorCode } from '../../.
 import { coworkService } from '../../services/cowork';
 import { i18nService } from '../../services/i18n';
 import { LogReporterAction, reportYdAnalyzer } from '../../services/logReporter';
+import { formatUserFacingError } from '../../services/userFacingError';
 import type { OpenClawEngineStatus, OpenClawGatewayRepairResult } from '../../types/cowork';
 import type { SettingsOpenOptions } from '../Settings';
 
@@ -20,7 +21,7 @@ const resolveGatewayRepairErrorText = (result: OpenClawGatewayRepairResult): str
   if (result.errorCode === OpenClawGatewayRepairErrorCode.ConfigApplyPending) {
     return i18nService.t('openClawRepairConfigApplyPendingError');
   }
-  return result.error?.trim() || i18nService.t('openClawRepairFailed');
+  return formatUserFacingError(result.error, { fallbackKey: 'openClawRepairFailed' });
 };
 
 const EngineFailureOverlay: React.FC<EngineFailureOverlayProps> = ({
@@ -163,7 +164,7 @@ const EngineFailureOverlay: React.FC<EngineFailureOverlayProps> = ({
           </p>
           {isRuntimeMissing && status.message && (
             <p className="mt-2 max-w-full break-all text-xs leading-4 text-secondary/80">
-              {status.message}
+              {formatUserFacingError(status.message, { fallbackKey: 'coworkOpenClawRuntimeMissingError' })}
             </p>
           )}
           {gatewayRepairError && (

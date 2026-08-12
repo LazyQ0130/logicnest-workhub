@@ -7,6 +7,7 @@ import {
   APP_UPDATE_POLL_INTERVAL_MS,
   type AppUpdateInfo,
   type AppUpdateRuntimeState,
+  AppUpdateSource,
   AppUpdateStatus,
   isManualDownloadUrl,
 } from '../shared/appUpdate/constants';
@@ -34,8 +35,6 @@ import Settings, { type SettingsOpenOptions } from './components/Settings';
 import Sidebar from './components/Sidebar';
 import { SitesView } from './components/sites';
 import { SkillsView } from './components/skills';
-import SkinBackdrop, { SkinBackdropVariant } from './components/skin/SkinBackdrop';
-import SkinPresentationScope from './components/skin/SkinPresentationScope';
 import Toast from './components/Toast';
 import AppUpdateBadge from './components/update/AppUpdateBadge';
 import AppUpdateBlockingPanel from './components/update/AppUpdateBlockingPanel';
@@ -50,7 +49,6 @@ import AppUpdateModal from './components/update/AppUpdateModal';
 import WindowsAppTitleBar from './components/window/WindowsAppTitleBar';
 import { defaultConfig, getProviderDisplayName, ShortcutAction } from './config';
 import { SidebarDestination, type SidebarDestination as SidebarDestinationType } from './config/brandUi';
-import { SkinProvider } from './providers/SkinProvider';
 import type { ApiConfig } from './services/api';
 import { apiService } from './services/api';
 import { configService } from './services/config';
@@ -76,6 +74,7 @@ import {
 import { setActiveKitIds } from './store/slices/kitSlice';
 import { setAvailableModels, setDefaultSelectedModel } from './store/slices/modelSlice';
 import { clearSelection } from './store/slices/quickActionSlice';
+import { setLoggedIn, setLoggedOut } from './store/slices/authSlice';
 import { CoworkCollaborationMode, type CoworkPermissionResult } from './types/cowork';
 
 const AGENT_TASK_SLOT_SHORTCUT_ACTIONS = [
@@ -174,6 +173,7 @@ const App: React.FC = () => {
   const askAiFocusTimerRef = useRef<number | null>(null);
   const hasInitialized = useRef(false);
   const previousUpdateStatusRef = useRef<AppUpdateRuntimeState['status']>(AppUpdateStatus.Idle);
+  const hasShownAutoUpdatePromptRef = useRef(false);
   const shouldInstallReadyUpdateRef = useRef(false);
   const isUserInitiatedUpdateFlowActiveRef = useRef(false);
   const dispatch = useDispatch();
@@ -331,6 +331,36 @@ const App: React.FC = () => {
   }, [dispatch, waitWithTimeout]);
 
   useEffect(() => window.electron.license.onStateChanged(setLicenseState), []);
+
+  // The desktop client now authenticates through the local license service,
+  // while several shared controls (including voice input) still consume the
+  // legacy renderer auth slice. Keep that slice in sync so an authorized
+  // license session is not incorrectly treated as signed out.
+  useEffect(() => {
+    const isAuthorized = licenseState.phase === LicensePhase.Authorized
+      || licenseState.phase === LicensePhase.OfflineGrace;
+    if (!isAuthorized || !licenseState.user) {
+      dispatch(setLoggedOut());
+      return;
+    }
+
+    dispatch(setLoggedIn({
+      user: {
+        yid: licenseState.user.uid,
+        nickname: licenseState.user.phoneMasked,
+        avatarUrl: null,
+        phone: licenseState.user.phoneMasked,
+        userId: licenseState.user.uid,
+      },
+      quota: {
+        planName: licenseState.membership.planCode || 'LogicNest WorkHub',
+        subscriptionStatus: licenseState.membership.status === 'active' ? 'active' : 'free',
+        creditsLimit: 0,
+        creditsUsed: 0,
+        creditsRemaining: 0,
+      },
+    }));
+  }, [dispatch, licenseState]);
 
   useEffect(() => {
     const unsubscribe = i18nService.subscribe(() => {
@@ -573,7 +603,7 @@ const App: React.FC = () => {
   useEffect(() => {
     let mounted = true;
 
-    if (!isCoreInitialized || !isLicenseAuthorized(licenseState) || !BRAND.features.officialUpdates) {
+    if (!isBaseInitialized || !BRAND.features.officialUpdates || enterpriseConfig?.disableUpdate) {
       return () => { mounted = false; };
     }
 
@@ -587,6 +617,14 @@ const App: React.FC = () => {
           // (e.g. the installer never launched) — re-prompt the user.
           if (state.status === AppUpdateStatus.Ready && state.installIncomplete) {
             setShowUpdateModal(true);
+          }
+          if (
+            state.status === AppUpdateStatus.Available
+            && state.source === AppUpdateSource.Auto
+            && !hasShownAutoUpdatePromptRef.current
+          ) {
+            setShowUpdateModal(true);
+            hasShownAutoUpdatePromptRef.current = true;
           }
         }
         // Silent installs relaunch the app with no visible install step, so
@@ -606,6 +644,15 @@ const App: React.FC = () => {
       const previousStatus = previousUpdateStatusRef.current;
       previousUpdateStatusRef.current = state.status;
       setAppUpdateState(state);
+
+      if (
+        state.status === AppUpdateStatus.Available
+        && state.source === AppUpdateSource.Auto
+        && !hasShownAutoUpdatePromptRef.current
+      ) {
+        setShowUpdateModal(true);
+        hasShownAutoUpdatePromptRef.current = true;
+      }
 
       if (!isAppUpdateInteractionBlockingStatus(state.status)) {
         shouldInstallReadyUpdateRef.current = false;
@@ -653,7 +700,7 @@ const App: React.FC = () => {
       mounted = false;
       unsubscribe();
     };
-  }, [isCoreInitialized, licenseState, showToast, stopUserInitiatedUpdateFlow]);
+  }, [isBaseInitialized, enterpriseConfig?.disableUpdate, showToast, stopUserInitiatedUpdateFlow]);
 
   const handleLicenseLogout = useCallback(async (): Promise<void> => {
     const nextState = await window.electron.license.logout();
@@ -665,6 +712,14 @@ const App: React.FC = () => {
     try {
       const result = await window.electron.appUpdate.checkNow({ userId: authUser?.yid });
       setAppUpdateState(result.state);
+      if (
+        result.state.status === AppUpdateStatus.Available
+        && result.state.source === AppUpdateSource.Auto
+        && !hasShownAutoUpdatePromptRef.current
+      ) {
+        setShowUpdateModal(true);
+        hasShownAutoUpdatePromptRef.current = true;
+      }
       if (!result.success) {
         console.error('[App] app update check failed:', result.error);
       }
@@ -845,11 +900,6 @@ const App: React.FC = () => {
       });
       dispatch(setAvailableModels(allModels));
     }
-  };
-
-  const handleStartAiSkinFromSettings = (text: string, kitId: string) => {
-    handleCloseSettings();
-    openHomeWithKit(kitId, text);
   };
 
   const isShortcutInputActive = () => {
@@ -1169,7 +1219,7 @@ const App: React.FC = () => {
   }, [isCoreInitialized, mainView, showSettings, currentSessionId]);
 
   useEffect(() => {
-    if (!isCoreInitialized || !isLicenseAuthorized(licenseState) || !BRAND.features.officialUpdates) return;
+    if (!isBaseInitialized || !BRAND.features.officialUpdates) return;
 
     // Enterprise mode: completely skip update detection
     if (enterpriseConfig?.disableUpdate) return;
@@ -1207,7 +1257,7 @@ const App: React.FC = () => {
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [isCoreInitialized, licenseState, runUpdateCheck, enterpriseConfig]);
+  }, [isBaseInitialized, runUpdateCheck, enterpriseConfig]);
 
   // 根据场景选择使用哪个权限组件。最小化时保持组件挂载（仅视觉隐藏），
   // 避免重新展开后丢失用户已选择/已输入的内容；key 按 requestId 隔离不同请求的状态。
@@ -1331,17 +1381,15 @@ const App: React.FC = () => {
             </div>
           </div>
           {showSettings && (
-            <SkinProvider>
-              <Settings
-                onClose={handleCloseSettings}
-                licenseUserId={licenseState.user?.uid}
-                initialTab={settingsOptions.initialTab}
-                initialTabRequestId={settingsOptions.requestId}
-                notice={settingsOptions.notice}
-                onUpdateFound={handleUpdateFound}
-                enterpriseConfig={enterpriseConfig}
-              />
-            </SkinProvider>
+            <Settings
+              onClose={handleCloseSettings}
+              licenseUserId={licenseState.user?.uid}
+              initialTab={settingsOptions.initialTab}
+              initialTabRequestId={settingsOptions.requestId}
+              notice={settingsOptions.notice}
+              onUpdateFound={handleUpdateFound}
+              enterpriseConfig={enterpriseConfig}
+            />
           )}
         </div>
       </div>
@@ -1365,11 +1413,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <SkinProvider>
-      <SkinPresentationScope
-        enabled
-        className="h-screen overflow-hidden flex flex-col bg-surface-raised"
-      >
+    <div className="h-screen overflow-hidden flex flex-col bg-surface-raised">
       {toastMessage && (
         <Toast
           message={toastMessage}
@@ -1406,13 +1450,8 @@ const App: React.FC = () => {
         />
         <div className={`flex-1 min-w-0 transition-[padding] duration-200 ease-out ${isSidebarCollapsed ? 'pl-1.5' : ''}`}>
           <div
-            data-skin-cowork-frame={mainView === 'cowork' ? 'true' : undefined}
-            data-skin-management-frame={mainView !== 'cowork' ? 'true' : undefined}
             className="relative h-full min-h-0 rounded-xl border border-border bg-background overflow-hidden"
           >
-            {mainView !== 'cowork' && (
-              <SkinBackdrop variant={SkinBackdropVariant.Management} />
-            )}
             <EngineStartupOverlay />
             {mainView === 'skills' ? (
               <SkillsView
@@ -1430,6 +1469,7 @@ const App: React.FC = () => {
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}
+                onOpenMessagingSettings={() => handleShowSettings({ initialTab: 'im' })}
                 updateBadge={collapsedHeaderUpdateBadge}
               />
             ) : mainView === 'kits' ? (
@@ -1493,7 +1533,6 @@ const App: React.FC = () => {
         <Settings
           onClose={handleCloseSettings}
           licenseUserId={licenseState.user?.uid}
-          onStartAiSkin={handleStartAiSkinFromSettings}
           initialTab={settingsOptions.initialTab}
           initialTabRequestId={settingsOptions.requestId}
           notice={settingsOptions.notice}
@@ -1515,8 +1554,7 @@ const App: React.FC = () => {
         />
       )}
       {permissionModal}
-      </SkinPresentationScope>
-    </SkinProvider>
+    </div>
   );
 };
 

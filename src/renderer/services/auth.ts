@@ -260,6 +260,24 @@ class AuthService {
     const attemptId = ++this.loginAttemptSequence;
     writeAuthRendererLog('info', `login attempt ${attemptId} started`);
 
+    // LogicNest uses the in-app license account instead of the retired
+    // hosted portal. Authorized sessions are synchronized into the legacy
+    // auth slice by App.tsx, so never open the disabled localhost:1 endpoint.
+    if (window.electron.license?.getState) {
+      const licenseState = await window.electron.license.getState();
+      const isAuthorized = licenseState.phase === 'authorized'
+        || licenseState.phase === 'offline_grace';
+      if (isAuthorized) {
+        writeAuthRendererLog('info', `login attempt ${attemptId} reused the active local license session`);
+        return;
+      }
+      window.dispatchEvent(new CustomEvent('app:showToast', {
+        detail: '请先在客户端登录账号并完成授权。',
+      }));
+      writeAuthRendererLog('warn', `login attempt ${attemptId} requires the local license sign-in screen`);
+      return;
+    }
+
     try {
       const loginUrl = await this.fetchLoginUrl();
       const result = await window.electron.auth.login(loginUrl);

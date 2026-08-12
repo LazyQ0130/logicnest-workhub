@@ -18,6 +18,7 @@ export interface AgentSidebarTaskNode {
   status: CoworkSessionStatus;
   pinned: boolean;
   pinOrder?: number | null;
+  cwd: string;
   updatedAt: number;
   createdAt: number;
   indicator: AgentSidebarIndicator;
@@ -37,6 +38,7 @@ export interface AgentSidebarAgentNode extends AgentSidebarAgentSummary {
 export interface AgentSidebarPreferenceState {
   expandedAgentIds: string[];
   expandedTaskListAgentIds: string[];
+  collapsedWorkspaceKeys?: string[];
   selectedAgentId?: string;
   selectedTaskId?: string;
 }

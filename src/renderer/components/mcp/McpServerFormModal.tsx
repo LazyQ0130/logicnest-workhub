@@ -3,6 +3,7 @@ import React, { useEffect,useState } from 'react';
 import { McpUrlValidationError, normalizeMcpServerUrlInput } from '../../../shared/mcp/url';
 import { i18nService } from '../../services/i18n';
 import { McpJsonImportErrorCode, McpJsonImportResult, parseMcpServersJson } from '../../services/mcpJsonImport';
+import { formatUserFacingError } from '../../services/userFacingError';
 import { McpRegistryEntry,McpServerConfig, McpServerFormData } from '../../types/mcp';
 import Modal from '../common/Modal';
 
@@ -37,6 +38,8 @@ const MCP_JSON_EXAMPLE = `{
     }
   }
 }`;
+
+const MISSING_ENV_ERROR_PREFIX = 'MCP_ENV_VALUES_REQUIRED:';
 
 interface McpServerFormModalProps {
   isOpen: boolean;
@@ -192,13 +195,18 @@ const McpServerFormModal: React.FC<McpServerFormModalProps> = ({
 
     // Validate required env vars
     const missingRequiredIndices: Record<number, boolean> = {};
+    const missingRequiredKeys: string[] = [];
     envRows.forEach((row, index) => {
-      if (row.required && !row.value.trim()) {
+      const value = row.value.trim();
+      const key = row.key.trim();
+      if (row.required && (!value || value === key)) {
         missingRequiredIndices[index] = true;
+        if (key) missingRequiredKeys.push(key);
       }
     });
     if (Object.keys(missingRequiredIndices).length > 0) {
       setEnvErrors(missingRequiredIndices);
+      setError(`${MISSING_ENV_ERROR_PREFIX}${missingRequiredKeys.join('|')}`);
       return;
     }
 
@@ -347,6 +355,12 @@ const McpServerFormModal: React.FC<McpServerFormModalProps> = ({
   const saveText = isRegistry && !isEdit
     ? i18nService.t('mcpInstall')
     : i18nService.t('saveMcpServer');
+  const displayError = error.startsWith(MISSING_ENV_ERROR_PREFIX)
+    ? i18nService.t('mcpEnvValuesRequired').replace(
+      '{keys}',
+      error.slice(MISSING_ENV_ERROR_PREFIX.length).split('|').join('、'),
+    )
+    : formatUserFacingError(error, { fallbackKey: 'mcpUpdateFailed' });
 
   return (
     <Modal onClose={onClose} overlayClassName="fixed inset-0 z-50 flex items-center justify-center modal-backdrop px-4" className="modal-content flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-modal">
@@ -503,10 +517,10 @@ const McpServerFormModal: React.FC<McpServerFormModalProps> = ({
                         readOnly={!!row.required}
                       />
                       <input
-                        type="text"
+                        type={row.required ? 'password' : 'text'}
                         value={row.value}
                         onChange={(e) => handleUpdateEnvRow(index, 'value', e.target.value)}
-                        placeholder={row.required ? `${row.key} *` : i18nService.t('mcpHeaderValue')}
+                        placeholder={row.required ? i18nService.t('mcpEnvValuePlaceholder') : i18nService.t('mcpHeaderValue')}
                         className={
                           envErrors[index]
                             ? kvInputClass + ' border-red-500 focus:ring-red-500'
@@ -601,7 +615,9 @@ const McpServerFormModal: React.FC<McpServerFormModalProps> = ({
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-4">
-          <p className="min-w-0 flex-1 text-xs text-red-500">{error}</p>
+          <p className="min-w-0 flex-1 text-xs text-red-500" role={error ? 'alert' : undefined}>
+            {error ? displayError : null}
+          </p>
           <div className="flex flex-shrink-0 items-center gap-2">
             <button
               type="button"

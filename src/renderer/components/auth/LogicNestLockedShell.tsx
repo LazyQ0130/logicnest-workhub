@@ -12,6 +12,7 @@ import React, { useState } from 'react';
 import type { LicenseActionResponse, LicenseState } from '../../../shared/license';
 import { LicensePhase } from '../../../shared/license';
 import { i18nService } from '../../services/i18n';
+import { formatUserFacingError } from '../../services/userFacingError';
 import WindowTitleBar from '../window/WindowTitleBar';
 
 interface LicenseStateViewProps {
@@ -59,7 +60,7 @@ export const LogicNestLockedShell: React.FC<LicenseStateViewProps> = ({ state, o
     try {
       const result = await window.electron.license.redeem(activationCode.trim());
       if (isActionError(result)) {
-        setError(result.error.message || i18nService.t('logicnestLicenseError'));
+        setError(formatUserFacingError(result.error, { fallbackKey: 'logicnestLicenseError' }));
         return;
       }
       onState(result.state);

@@ -116,6 +116,30 @@ describe('authenticated server model mapping', () => {
 });
 
 describe('login diagnostics', () => {
+  test('does not open the retired portal when a local license session is active', async () => {
+    const fromRenderer = vi.fn();
+    const login = vi.fn();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.stubGlobal('window', {
+      electron: {
+        license: {
+          getState: vi.fn().mockResolvedValue({ phase: 'authorized' }),
+        },
+        auth: { login },
+        log: { fromRenderer },
+      },
+    });
+
+    await authService.login();
+
+    expect(login).not.toHaveBeenCalled();
+    expect(fromRenderer).toHaveBeenCalledWith(
+      'info',
+      'AuthService',
+      expect.stringMatching(/reused the active local license session/),
+    );
+  });
+
   test('persists renderer lifecycle logs without including the login URL', async () => {
     const fromRenderer = vi.fn();
     const login = vi.fn().mockResolvedValue({ success: true });

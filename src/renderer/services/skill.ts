@@ -2,6 +2,39 @@ import { LocalizedText, LocalSkillInfo, MarketplaceSkill, MarketTag, Skill } fro
 import { i18nService } from './i18n';
 import { LogReporterAction, reportYdAnalyzer } from './logReporter';
 
+// Chinese presentation fallback for built-in capabilities. Raw SKILL.md text is
+// intentionally kept separate so routing prompts continue to use the original contract.
+export const BUILTIN_SKILL_DISPLAY_ZH: Record<string, { displayNameZh: string; displayDescriptionZh: string }> = {
+  'article-writer': { displayNameZh: '文章写作', displayDescriptionZh: '撰写结构完整、适合目标读者的中文或英文文章。' },
+  'canvas-design': { displayNameZh: '平面设计', displayDescriptionZh: '制作海报、视觉作品和可导出的静态设计。' },
+  'content-planner': { displayNameZh: '内容策划', displayDescriptionZh: '规划内容主题、栏目、发布节奏和选题清单。' },
+  'create-plan': { displayNameZh: '计划制定', displayDescriptionZh: '把复杂目标拆解成清晰、可执行的步骤和检查项。' },
+  'daily-trending': { displayNameZh: '每日热点', displayDescriptionZh: '整理当天热点信息并提炼值得关注的主题。' },
+  'develop-web-game': { displayNameZh: '网页游戏开发', displayDescriptionZh: '创建和调试可在浏览器运行的交互式游戏。' },
+  docx: { displayNameZh: 'Word 文档', displayDescriptionZh: '创建、编辑和检查 Word 文档内容与版式。' },
+  'films-search': { displayNameZh: '影视搜索', displayDescriptionZh: '查询影片和剧集信息，整理推荐与观看参考。' },
+  'frontend-design': { displayNameZh: '前端设计', displayDescriptionZh: '设计并实现完整、精致的网页界面和交互组件。' },
+  'imap-smtp-email': { displayNameZh: '邮件收发', displayDescriptionZh: '通过 IMAP 和 SMTP 查询、整理和发送电子邮件。' },
+  'local-tools': { displayNameZh: '本地工具', displayDescriptionZh: '调用本地实用工具完成文件和系统辅助任务。' },
+  'music-search': { displayNameZh: '音乐搜索', displayDescriptionZh: '查询歌曲、专辑和音乐相关资料。' },
+  pdf: { displayNameZh: 'PDF 文档', displayDescriptionZh: '读取、创建、检查和处理 PDF 文件。' },
+  playwright: { displayNameZh: '浏览器自动化', displayDescriptionZh: '自动操作网页并验证页面状态和交互。' },
+  pptx: { displayNameZh: '演示文稿', displayDescriptionZh: '创建、编辑和检查 PowerPoint 演示文稿。' },
+  remotion: { displayNameZh: '程序化视频', displayDescriptionZh: '使用代码制作可渲染的视频内容。' },
+  seedance: { displayNameZh: '视频生成', displayDescriptionZh: '根据文字或参考素材生成视频。' },
+  seedream: { displayNameZh: '图片生成', displayDescriptionZh: '根据文字或参考图片生成视觉素材。' },
+  'skill-creator': { displayNameZh: '能力创建', displayDescriptionZh: '创建和完善可复用的 Agent 能力包。' },
+  'skill-vetter': { displayNameZh: '能力审查', displayDescriptionZh: '检查能力包的安全性、结构和可用性。' },
+  'stock-analyzer': { displayNameZh: '股票分析', displayDescriptionZh: '整理行情与指标并输出结构化分析。' },
+  'stock-announcements': { displayNameZh: '股票公告', displayDescriptionZh: '查询和归纳上市公司公告。' },
+  'stock-explorer': { displayNameZh: '股票查询', displayDescriptionZh: '查找股票基础资料、行情和相关信息。' },
+  'technology-news-search': { displayNameZh: '科技资讯', displayDescriptionZh: '检索并整理科技、人工智能和产品资讯。' },
+  weather: { displayNameZh: '天气查询', displayDescriptionZh: '查询天气实况和预报。' },
+  'web-search': { displayNameZh: '网页搜索', displayDescriptionZh: '搜索互联网并整理可靠来源。' },
+  xlsx: { displayNameZh: '电子表格', displayDescriptionZh: '创建、编辑、分析和检查电子表格。' },
+  youdaonote: { displayNameZh: '云笔记兼容', displayDescriptionZh: '读取和整理兼容云笔记格式的内容。' },
+};
+
 export function resolveLocalizedText(text: string | LocalizedText): string {
   if (!text) return '';
   if (typeof text === 'string') return text;
@@ -19,6 +52,17 @@ export function compareVersions(a: string, b: string): number {
     if (na < nb) return -1;
   }
   return 0;
+}
+
+/** Legacy SKILL.md files may omit version; keep that value incomparable. */
+export function isComparableVersion(version: unknown): version is string {
+  return typeof version === 'string'
+    && /^(?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){0,2}(?:[-+][0-9A-Za-z.-]+)?$/.test(version.trim());
+}
+
+export function isSkillUpdateAvailable(marketVersion: unknown, installedVersion: unknown): boolean {
+  if (!isComparableVersion(marketVersion) || !isComparableVersion(installedVersion)) return false;
+  return compareVersions(marketVersion.trim(), installedVersion.trim()) > 0;
 }
 
 function getSkillAnalyticsSource(skill: Skill): string {
@@ -422,13 +466,17 @@ class SkillService {
   }
 
   getLocalizedSkillDescription(skillId: string, skillName: string, fallback: string): string {
-    const localDesc = this.localSkillDescriptions.get(skillName) ?? this.localSkillDescriptions.get(skillId);
-    if (localDesc != null) return resolveLocalizedText(localDesc);
     const marketDesc = this.marketplaceSkillDescriptions.get(skillId);
     if (marketDesc != null) return resolveLocalizedText(marketDesc);
+    const localDesc = this.localSkillDescriptions.get(skillName) ?? this.localSkillDescriptions.get(skillId);
+    if (localDesc != null) return resolveLocalizedText(localDesc);
     const kitDesc = this.installedKitSkillDescriptions.get(skillId);
     if (kitDesc != null) return resolveLocalizedText(kitDesc);
-    return fallback;
+    return BUILTIN_SKILL_DISPLAY_ZH[skillId]?.displayDescriptionZh ?? fallback;
+  }
+
+  getLocalizedSkillName(skillId: string, fallback: string): string {
+    return BUILTIN_SKILL_DISPLAY_ZH[skillId]?.displayNameZh ?? fallback;
   }
 }
 

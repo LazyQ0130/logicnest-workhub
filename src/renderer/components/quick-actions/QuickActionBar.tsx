@@ -30,7 +30,7 @@ const QuickActionBar: React.FC<QuickActionBarProps> = ({ actions, selectedAction
   }
 
   return (
-    <div data-skin-quick-actions="true" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
       {actions.map((action) => {
         const IconComponent = iconMap[action.icon];
         const isSelected = action.id === selectedActionId;

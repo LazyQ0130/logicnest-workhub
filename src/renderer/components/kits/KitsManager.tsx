@@ -177,15 +177,22 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking, onUseKit }) => {
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
-    const [marketKits, installed] = await Promise.all([
-      kitService.fetchMarketplaceKits(),
-      kitService.getInstalledKits(),
-    ]);
-    setKits(marketKits);
-    setInstalledKits(installed);
-    dispatch(setMarketplaceKits(marketKits));
-    dispatch(setInstalledKitsAction(installed));
-    setIsLoading(false);
+    setActionError('');
+    try {
+      const [marketKits, installed] = await Promise.all([
+        kitService.fetchMarketplaceKits(),
+        kitService.getInstalledKits(),
+      ]);
+      setKits(marketKits);
+      setInstalledKits(installed);
+      dispatch(setMarketplaceKits(marketKits));
+      dispatch(setInstalledKitsAction(installed));
+    } catch (error) {
+      console.error('[KitsManager] Failed to load kit store:', error);
+      setActionError(i18nService.t('kitEmpty'));
+    } finally {
+      setIsLoading(false);
+    }
   }, [dispatch]);
 
   useEffect(() => {
@@ -243,6 +250,14 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking, onUseKit }) => {
     i18nService.t(key).replace('{name}', resolveLocalizedText(kit.name))
   );
 
+  const formatKitInstallError = (kit: MarketplaceKit, reason?: string) => (
+    reason
+      ? i18nService.t('kitInstallFailedWithReason')
+        .replace('{name}', resolveLocalizedText(kit.name))
+        .replace('{reason}', reason)
+      : formatKitActionError('kitInstallFailed', kit)
+  );
+
   const handleInstall = async (kit: MarketplaceKit) => {
     setOperatingKitId(kit.id);
     setOperationType(KitOperationType.Install);
@@ -264,7 +279,7 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking, onUseKit }) => {
         });
       } else {
         console.error('[KitsManager] Install failed:', result.error);
-        setActionError(formatKitActionError('kitInstallFailed', kit));
+        setActionError(formatKitInstallError(kit, result.error));
         reportKitAction('install_failed', {
           source: 'kits_manager',
           result: 'failed',
@@ -691,7 +706,6 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking, onUseKit }) => {
 
       {/* Sticky toolbar: Search + tabs */}
       <div
-        data-skin-management-toolbar="true"
         className="sticky top-0 z-10 space-y-4 bg-background pb-4"
       >
         {actionError && (

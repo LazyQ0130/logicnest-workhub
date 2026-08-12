@@ -17,6 +17,28 @@ function isMacTarget(context) {
   return context?.electronPlatformName === 'darwin';
 }
 
+const REQUIRED_WINDOWS_OPENCLAW_RUNTIME_FILES = [
+  path.join('node_modules', 'jiti', 'package.json'),
+  path.join('node_modules', 'jiti', 'lib', 'jiti.cjs'),
+  path.join('node_modules', 'jiti', 'dist', 'babel.cjs'),
+];
+
+function verifyWindowsPackagedOpenClawRuntime(appOutDir) {
+  const runtimeRoot = path.join(appOutDir, 'resources', 'cfmind');
+  const missing = REQUIRED_WINDOWS_OPENCLAW_RUNTIME_FILES.filter(
+    (relativePath) => !existsSync(path.join(runtimeRoot, relativePath)),
+  );
+
+  if (missing.length > 0) {
+    throw new Error(
+      '[electron-builder-hooks] Packaged OpenClaw runtime is missing required external files: '
+      + missing.join(', '),
+    );
+  }
+
+  console.log('[electron-builder-hooks] Verified packaged OpenClaw external runtime dependencies.');
+}
+
 function resolveTargetArch(context) {
   if (context?.arch === 3) return 'arm64';
   if (context?.arch === 0) return 'ia32';
@@ -600,13 +622,17 @@ async function afterPack(context) {
     }
   }
 
-  // Windows binaries need no extra handling here: with win.sign configured,
-  // electron-builder routes the app exe, uninstaller and installer through
-  // scripts/win-sign.cjs, and the NSIS target's CopyElevateHelper signs
-  // resources/elevate.exe itself (see app-builder-lib nsisUtil.js).
+  if (isWindowsTarget(context)) {
+    verifyWindowsPackagedOpenClawRuntime(context.appOutDir);
+  }
+
+  // Windows binaries need no extra handling here. Production signing is
+  // handled by electron-builder; explicit unsigned QA builds disable signing
+  // through the supported win.signExecutable option.
 }
 
 module.exports = {
   beforePack,
   afterPack,
+  verifyWindowsPackagedOpenClawRuntime,
 };

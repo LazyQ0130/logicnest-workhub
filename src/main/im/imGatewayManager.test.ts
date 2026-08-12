@@ -2,7 +2,11 @@ import { describe, expect, test, vi } from 'vitest';
 
 import { IMGatewayManager } from './imGatewayManager';
 
-function createManager(request: (method: string) => Promise<unknown>): IMGatewayManager {
+function createManager(request: (
+  method: string,
+  params?: unknown,
+  opts?: { expectFinal?: boolean; timeoutMs?: number | null },
+) => Promise<unknown>): IMGatewayManager {
   const manager = Object.create(IMGatewayManager.prototype) as IMGatewayManager;
   Object.assign(manager, {
     getOpenClawGatewayClient: () => ({ request }),
@@ -120,6 +124,29 @@ describe('IMGatewayManager OpenClaw status', () => {
       qrDataUrl: 'https://example.test/weixin-qr',
       sessionKey: 'weixin-session',
     });
+  });
+
+  test('keeps the gateway request alive for the full WeChat QR polling window', async () => {
+    const request = vi.fn(async () => ({
+      connected: false,
+      message: 'QR login timed out',
+    }));
+    const releaseWeixinLoginProvider = vi.fn(async () => {});
+    const manager = createManager(request);
+    Object.assign(manager, {
+      getConfig: () => ({}),
+      releaseWeixinLoginProvider,
+    });
+
+    const result = await manager.weixinQrLoginWait('weixin-session');
+
+    expect(request).toHaveBeenCalledWith(
+      'web.login.wait',
+      { timeoutMs: 480_000, accountId: 'weixin-session' },
+      { timeoutMs: 510_000 },
+    );
+    expect(releaseWeixinLoginProvider).toHaveBeenCalledWith(false);
+    expect(result).toMatchObject({ connected: false, message: 'QR login timed out' });
   });
 
   test('rejects retired channels before attempting to start or test them', async () => {

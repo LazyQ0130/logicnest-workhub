@@ -43,6 +43,10 @@
   ],
   "extraResources": [
     {
+      "from": ".license-build/license.json",
+      "to": "config/license.json"
+    },
+    {
       "from": "LICENSE",
       "to": "legal/LICENSE-LobsterAI-MIT.txt"
     },
@@ -174,6 +178,7 @@
     "sign": false
   },
   "afterSign": "scripts/notarize.js",
+  "afterPack": "scripts/electron-builder-hooks.cjs",
   "win": {
     "target": [
       "nsis"
@@ -184,6 +189,42 @@
       {
         "from": "vendor/openclaw-runtime/current",
         "to": "cfmind",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "vendor/openclaw-runtime/current/node_modules",
+        "to": "cfmind/node_modules",
+        "filter": [
+          "**/*",
+          "!**/.bin/**",
+          "!**/.env",
+          "!**/.env.*"
+        ]
+      },
+      {
+        "from": "resources/python-win",
+        "to": "python-win",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/asr-models",
+        "to": "asr-models",
+        "filter": [
+          "**/*",
+          "!**/.cache/**"
+        ]
+      },
+      {
+        "from": "resources/asr-transcribe.py",
+        "to": "asr-transcribe.py"
+      },
+      {
+        "from": "resources/mingit",
+        "to": "mingit",
         "filter": [
           "**/*"
         ]
@@ -274,12 +315,7 @@
           "!**/__tests__/**"
         ]
       }
-    ],
-    "desktop": {
-      "Name": "逻栖工枢",
-      "Comment": "AI-assisted coding and productivity tool",
-      "Terminal": "false"
-    }
+    ]
   },
   "nsis": {
     "oneClick": false,
@@ -288,7 +324,8 @@
     "deleteAppDataOnUninstall": false,
     "include": "scripts/nsis-installer.nsh"
   },
-  "electronVersion": "40.2.1",
+  "electronVersion": "40.10.6",
+  "npmRebuild": false,
   "asarUnpack": [
     "node_modules/@img/**",
     "node_modules/better-sqlite3/**",

@@ -318,6 +318,7 @@ export interface CoworkSessionSummary {
   status: CoworkSessionStatus;
   pinned: boolean;
   pinOrder?: number | null;
+  cwd: string;
   agentId?: string;
   parentSessionId?: string | null;
   forkedAt?: number | null;

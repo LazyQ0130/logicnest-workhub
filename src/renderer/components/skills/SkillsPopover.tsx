@@ -50,7 +50,7 @@ const SkillsPopover: React.FC<SkillsPopoverProps> = ({
       const description = shouldUseFallbackDescription
         ? skillService.getLocalizedSkillDescription(s.id, s.name, s.description)
         : '';
-      return s.name.toLowerCase().includes(query) || description.toLowerCase().includes(query);
+      return skillService.getLocalizedSkillName(s.id, s.name).toLowerCase().includes(query) || description.toLowerCase().includes(query);
     });
 
   // Load localized skill descriptions from marketplace/localSkill metadata.
@@ -218,7 +218,7 @@ const SkillsPopover: React.FC<SkillsPopoverProps> = ({
                         isActive ? 'text-primary' : 'text-foreground'
                       }`}
                     >
-                      {skill.name}
+                      {skillService.getLocalizedSkillName(skill.id, skill.name)}
                     </span>
                     {skill.isOfficial && (
                       <span className={asSubmenu

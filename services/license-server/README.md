@@ -76,7 +76,7 @@ npm run admin:bootstrap
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/auth/register` | `{phone,password,confirmPassword}`；手机号默认 +86 |
+| POST | `/auth/register` | `{phone,password,confirmPassword,deviceFingerprint?,clientVersion?}`；手机号默认 +86，桌面端会在创建账号前校验设备是否可用 |
 | POST | `/auth/login` | 返回短期 JWT 和一次性轮换 refresh token；可附 `deviceFingerprint` |
 | POST | `/auth/refresh` | `{refreshToken}`；旧 token 立即撤销，重复使用会撤销整个 family |
 | POST | `/auth/logout` | 撤销当前 refresh token |
@@ -89,8 +89,9 @@ npm run admin:bootstrap
 卡密格式为 `LQGX-XXXX-XXXX-XXXX-XXXX`，使用 CSPRNG 生成。批量卡密服务端
 只保存 HMAC-SHA256 摘要和末四位；完整卡密只在管理端生成响应及当次 CSV 中出现。
 数据库事务在卡密行上使用 `SELECT ... FOR UPDATE` 并采用 Serializable 隔离：
-同一账号/设备的重复提交返回同一授权结果，不延长有效期；跨账号或跨设备明确
-拒绝。默认预置 DAY（1 天）、MONTH（30 天）、YEAR（365 天）。
+同一账号/设备的重复提交返回同一授权结果，不延长有效期；默认单设备模式拒绝
+跨设备使用，多设备模式允许同一账号跨设备使用并保持单在线。跨账号始终拒绝。
+默认预置 DAY（1 天）、MONTH（30 天）、YEAR（365 天）。
 
 心跳成功返回 Ed25519 签名的离线 JWS。JWS 的 `offlineUntil` 不会超过实际
 会员到期时间和配置的宽限期（最大 72 小时）；客户端应校验签名、设备 id、授权
@@ -114,6 +115,7 @@ mutation 同时要求精确 `Origin` 和 `x-csrf-token`（与 cookie/session 摘
 | GET/POST/PATCH | `/license-keys`、`/license-keys/batches`、`/license-keys/:id/status` | 卡密分页、批量（≤1000）、吊销 |
 | GET/PATCH/POST | `/devices`、`/devices/:id/status`、`/devices/:id/unbind` | 设备封停/解封/解绑 |
 | POST | `/devices/:id/invalidate-sessions` | 强制令牌失效 |
+| GET/PATCH | `/license-policy` | 读取或切换一卡一设备/一卡多设备（单账号单在线）模式 |
 | GET | `/audit-logs` | 脱敏分页审计日志 |
 
 批量生成返回 `{batch,keys,csv}`；后续列表永远不会返回完整卡密。
@@ -126,7 +128,7 @@ mutation 同时要求精确 `Origin` 和 `x-csrf-token`（与 cookie/session 摘
 - 卡密和设备指纹采用独立 HMAC key；日志 redaction 覆盖密码、卡密、token、cookie、手机号和设备指纹。
 - Helmet、精确 CORS、Origin/CSRF、全局与路由级限流、请求 ID、HTTPS 检查和审计日志。
 - 用户、设备、授权状态变化会递增 token/授权版本并撤销 refresh token；下一次心跳即失效。
-- MySQL 行锁 + Serializable 兑换事务，数据库唯一约束保证一码一账号一设备。
+- MySQL 行锁 + Serializable 兑换事务；默认模式保证一码一账号一设备，单账号单在线模式允许同一账号多设备使用并撤销旧登录会话。
 - Docker 运行时使用非 root 用户；只通过 nginx/受控负载均衡终止 TLS。
 
 ## 测试与构建
@@ -146,6 +148,6 @@ JWT/Ed25519 JWS、限流、安全 headers、Origin/CSRF、错误 requestId 及�
 
 ## 数据库迁移
 
-迁移位于 `prisma/migrations/202608020001_init/migration.sql`。生产只运行
-`prisma migrate deploy`，不运行 `migrate reset`。MySQL 账户应仅授予该数据库
-所需权限，备份和恢复由部署平台负责。
+迁移位于 `prisma/migrations/`，其中 `202608120001_license_policy` 增加授权模式配置并
+移除设备授权历史的唯一设备约束。生产只运行 `prisma migrate deploy`，不运行
+`migrate reset`。MySQL 账户应仅授予该数据库所需权限，备份和恢复由部署平台负责。
