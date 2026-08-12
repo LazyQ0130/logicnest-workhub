@@ -1,11 +1,12 @@
+import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { WebSocketServer, WebSocket } from 'ws';
+
 import { app } from 'electron';
+import { WebSocket,WebSocketServer } from 'ws';
 
 import { AsrApiCode, AsrRealtimeEventType, type AsrRealtimeSessionData } from '../../../shared/asr/constants';
 

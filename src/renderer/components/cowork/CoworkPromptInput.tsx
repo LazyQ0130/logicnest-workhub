@@ -9,7 +9,6 @@ import {
 } from '@heroicons/react/24/outline';
 import { ArrowUpIcon, FolderIcon } from '@heroicons/react/24/solid';
 import { AuthSubscriptionStatus } from '@shared/auth/constants';
-import { LicensePhase, type LicenseState } from '../../../shared/license';
 import {
   BrowserAnnotationScreenshotStatus,
   type CoworkBrowserAnnotationBatch,
@@ -40,6 +39,7 @@ import {
   type CoworkPendingSteer,
   CoworkSteerStatus,
 } from '../../../shared/cowork/steer';
+import { LicensePhase, type LicenseState } from '../../../shared/license';
 import { agentService } from '../../services/agent';
 import { configService } from '../../services/config';
 import { coworkService } from '../../services/cowork';

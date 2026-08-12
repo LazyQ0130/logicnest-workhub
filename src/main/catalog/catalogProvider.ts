@@ -46,17 +46,13 @@ export class CatalogProvider {
     kind: LicenseCatalogItem['kind'] | undefined,
     etag: string | undefined,
   ): Promise<{ items: LicenseCatalogItem[]; offline: boolean }> {
-    try {
-      const response = await this.options.controller.fetchCatalog(kind, etag);
-      if (response.notModified) {
-        const cached = await this.readCache(cachePath);
-        return { items: cached.items, offline: false };
-      }
-      await this.writeCache(cachePath, response.etag, response.items);
-      return { items: response.items, offline: false };
-    } catch (error) {
-      throw error;
+    const response = await this.options.controller.fetchCatalog(kind, etag);
+    if (response.notModified) {
+      const cached = await this.readCache(cachePath);
+      return { items: cached.items, offline: false };
     }
+    await this.writeCache(cachePath, response.etag, response.items);
+    return { items: response.items, offline: false };
   }
 
   async materialize(url: string): Promise<string> {

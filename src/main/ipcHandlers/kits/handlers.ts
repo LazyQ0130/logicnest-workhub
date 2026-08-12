@@ -19,6 +19,7 @@ import type {
   LocalizedText,
 } from '../../../shared/kit/constants';
 import { KitStoreKey as KitStoreKeyValue } from '../../../shared/kit/constants';
+import { toCatalogUrl } from '../../catalog/catalogProvider';
 import {
   buildComputerUseMarketplaceKit,
   buildInstalledComputerUseKitRecord,
@@ -26,14 +27,13 @@ import {
   isComputerUseKitSupportedPlatform,
   removeComputerUseSkillArtifacts,
 } from '../../computerUse/computerUseKit';
-import { toCatalogUrl } from '../../catalog/catalogProvider';
-import type { LicenseCatalogItem } from '../../license/licenseApiClient';
 import {
   installComputerUseRuntime,
   uninstallComputerUseRuntime,
 } from '../../computerUse/computerUseRuntime';
 import { cpRecursiveSync } from '../../fsCompat';
 import { OpenClawConfigImpact } from '../../libs/openclawConfigImpact';
+import type { LicenseCatalogItem } from '../../license/licenseApiClient';
 import type { SkillManager } from '../../skills/skillManager';
 import type { SqliteStore } from '../../sqliteStore';
 

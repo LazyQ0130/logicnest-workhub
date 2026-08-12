@@ -3,10 +3,10 @@ import { BrowserWindow, ipcMain } from 'electron';
 import { McpIpcChannel } from '../../../shared/mcp/constants';
 import { normalizeMcpServerUrlInput } from '../../../shared/mcp/url';
 import { OpenClawConfigImpact } from '../../libs/openclawConfigImpact';
+import type { LicenseCatalogItem } from '../../license/licenseApiClient';
 import type { McpRuntime } from '../../mcp/mcpRuntime';
 import type { McpServerFormData } from '../../mcp/mcpStore';
 import { startQichachaMcpApiKeyLogin } from '../../mcp/qichachaMcpAuth';
-import type { LicenseCatalogItem } from '../../license/licenseApiClient';
 
 export interface McpHandlerDeps {
   getMcpRuntime: () => McpRuntime;

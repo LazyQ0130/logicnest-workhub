@@ -64,6 +64,7 @@ import {
   selectFirstCurrentSessionPendingPermission,
   selectPendingPermissions,
 } from './store/selectors/coworkSelectors';
+import { setLoggedIn, setLoggedOut } from './store/slices/authSlice';
 import {
   clearDraftAttachments,
   clearDraftSelectedTextSnippets,
@@ -74,7 +75,6 @@ import {
 import { setActiveKitIds } from './store/slices/kitSlice';
 import { setAvailableModels, setDefaultSelectedModel } from './store/slices/modelSlice';
 import { clearSelection } from './store/slices/quickActionSlice';
-import { setLoggedIn, setLoggedOut } from './store/slices/authSlice';
 import { CoworkCollaborationMode, type CoworkPermissionResult } from './types/cowork';
 
 const AGENT_TASK_SLOT_SHORTCUT_ACTIONS = [

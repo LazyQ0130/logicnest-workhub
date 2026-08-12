@@ -2,10 +2,10 @@ import { ipcMain } from 'electron';
 import fs from 'fs';
 import path from 'path';
 
+import { toCatalogUrl } from '../../catalog/catalogProvider';
+import type { LicenseCatalogItem } from '../../license/licenseApiClient';
 import { updatePluginSkillIdsFromReport } from '../../skills';
 import type { SkillManager } from '../../skills/skillManager';
-import type { LicenseCatalogItem } from '../../license/licenseApiClient';
-import { toCatalogUrl } from '../../catalog/catalogProvider';
 
 export interface SkillHandlerDeps {
   getSkillManager: () => SkillManager;
