@@ -39,7 +39,7 @@ test('isStaleInstallingResolution detects abandoned installs', () => {
     resolverKind: McpLaunchResolverKind.Npx,
     sourceFingerprint: 'fingerprint',
     status: McpLaunchResolutionStatus.Installing,
-    updatedAt: now - 151_000,
+    updatedAt: now - 631_000,
   }, now)).toBe(true);
 
   expect(isStaleInstallingResolution({
@@ -47,7 +47,7 @@ test('isStaleInstallingResolution detects abandoned installs', () => {
     resolverKind: McpLaunchResolverKind.Npx,
     sourceFingerprint: 'fingerprint',
     status: McpLaunchResolutionStatus.Installing,
-    updatedAt: now - 149_000,
+    updatedAt: now - 629_000,
   }, now)).toBe(false);
 });
 
