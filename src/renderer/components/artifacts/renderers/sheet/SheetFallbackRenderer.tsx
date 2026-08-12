@@ -8,7 +8,11 @@ import {
   useRegisterOfficePreviewZoomControls,
 } from '../OfficePreviewActionsContext';
 import { useOfficePreviewZoom } from '../OfficeZoomControls';
-import { getExtension } from './excelPreprocess';
+import {
+  getExtension,
+  isSpreadsheetPreviewSizeAllowed,
+  MAX_SPREADSHEET_PREVIEW_ROWS,
+} from './excelPreprocess';
 
 const t = (key: string) => i18nService.t(key);
 
@@ -91,14 +95,22 @@ export const SheetFallbackRenderer: React.FC<SheetFallbackRendererProps> = ({ da
 
     const parse = async () => {
       try {
+        if (!isSpreadsheetPreviewSizeAllowed(data.byteLength)) {
+          throw new Error(t('artifactSpreadsheetTooLarge'));
+        }
         const XLSX = await import('xlsx');
         const ext = getExtension(fileName);
         const workbook = ext === '.csv' || ext === '.tsv'
           ? XLSX.read(new TextDecoder('utf-8').decode(new Uint8Array(data)), {
               type: 'string',
               FS: ext === '.tsv' ? '\t' : undefined,
+              sheetRows: MAX_SPREADSHEET_PREVIEW_ROWS,
             })
-          : XLSX.read(new Uint8Array(data), { type: 'array', cellStyles: true });
+          : XLSX.read(new Uint8Array(data), {
+              type: 'array',
+              cellStyles: true,
+              sheetRows: MAX_SPREADSHEET_PREVIEW_ROWS,
+            });
 
         const parsed: SheetData[] = workbook.SheetNames.map(name => {
           const sheet = workbook.Sheets[name];

@@ -31,11 +31,22 @@ describe('Settings about page branding', () => {
     expect(settingsSource).not.toContain("i18nService.t('aboutServiceTerms')");
   });
 
-  test('only exposes brand-approved monochrome themes', () => {
+  test('exposes all built-in themes approved by the brand', () => {
     expect(BRAND.appearance.visibleThemeIds).toEqual([
       'classic-light',
       'classic-dark',
+      'dawn',
+      'daylight',
       'paper',
+      'sakura',
+      'midnight',
+      'ocean',
+      'emerald',
+      'rose',
+      'mocha',
+      'sunset',
+      'nord',
+      'cyber',
     ]);
     expect(appearanceSettingsSource).toContain(
       'BRAND.appearance.visibleThemeIds.includes(themeDefinition.meta.id)',

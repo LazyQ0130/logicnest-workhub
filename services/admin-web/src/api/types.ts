@@ -17,6 +17,10 @@ export const Permission = {
   DevicesRead: 'devices:read',
   DevicesWrite: 'devices:write',
   AuditLogsRead: 'audit-logs:read',
+  CatalogRead: 'catalog:read',
+  CatalogWrite: 'catalog:write',
+  DesktopReleasesRead: 'desktop-releases:read',
+  DesktopReleasesWrite: 'desktop-releases:write',
 } as const;
 
 export type Permission = (typeof Permission)[keyof typeof Permission];
@@ -137,6 +141,7 @@ export interface LicenseKeyRecord {
   codePreview?: string;
   lastFour?: string;
   status: LicenseKeyStatus;
+  reusableAfterUnbind?: boolean;
   planId: string;
   planName?: string;
   plan?: { id?: string; code?: string; name?: string };
@@ -199,3 +204,90 @@ export interface QueryPage {
 }
 
 export type QueryValue = string | number | boolean | null | undefined;
+
+export const CatalogKind = {
+  Skill: 'SKILL',
+  Kit: 'KIT',
+  Connector: 'CONNECTOR',
+} as const;
+export type CatalogKind = (typeof CatalogKind)[keyof typeof CatalogKind];
+
+export const CatalogReleaseStatus = {
+  Draft: 'DRAFT',
+  Published: 'PUBLISHED',
+  Archived: 'ARCHIVED',
+} as const;
+export type CatalogReleaseStatus = (typeof CatalogReleaseStatus)[keyof typeof CatalogReleaseStatus];
+
+export interface CatalogAsset {
+  role: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  sha256: string;
+}
+
+export const LicenseMode = {
+  SingleDevice: 'SINGLE_DEVICE',
+  MultiDeviceSingleSession: 'MULTI_DEVICE_SINGLE_SESSION',
+} as const;
+
+export type LicenseMode = (typeof LicenseMode)[keyof typeof LicenseMode];
+
+export interface LicensePolicy {
+  mode: LicenseMode;
+}
+
+export interface CatalogRelease {
+  id: string;
+  releaseId: string;
+  kind: CatalogKind;
+  slug: string;
+  version: string;
+  nameZh: string;
+  nameEn?: string | null;
+  descriptionZh: string;
+  descriptionEn?: string | null;
+  sortOrder: number;
+  tags: string[];
+  metadata: Record<string, unknown>;
+  status: CatalogReleaseStatus;
+  publishedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  assets: CatalogAsset[];
+}
+
+export const DesktopReleaseStatus = {
+  Draft: 'DRAFT',
+  Published: 'PUBLISHED',
+  Withdrawn: 'WITHDRAWN',
+  Archived: 'ARCHIVED',
+} as const;
+export type DesktopReleaseStatus = (typeof DesktopReleaseStatus)[keyof typeof DesktopReleaseStatus];
+
+export interface DesktopReleaseChangeLog {
+  title: string;
+  content: string[];
+}
+
+export interface DesktopRelease {
+  id: string;
+  version: string;
+  platform: string;
+  arch: string;
+  changeLogZh: DesktopReleaseChangeLog;
+  changeLogEn: DesktopReleaseChangeLog;
+  status: DesktopReleaseStatus;
+  publishedAt?: string | null;
+  withdrawnAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  asset: {
+    id: string;
+    originalName: string;
+    mimeType: string;
+    sizeBytes: number;
+    sha256: string;
+  } | null;
+}

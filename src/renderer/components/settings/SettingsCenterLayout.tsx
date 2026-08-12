@@ -35,7 +35,7 @@ export const SettingsCenterToolbar: React.FC<{
   onResultSelect,
   actions,
 }) => (
-  <header className="non-draggable relative z-20 shrink-0 border-b border-border bg-background">
+  <header className="draggable relative z-20 shrink-0 border-b border-border bg-background">
     <div className="mx-auto flex h-16 w-full max-w-[1200px] items-center gap-3 px-4 sm:px-6">
       <button
         type="button"
@@ -48,7 +48,7 @@ export const SettingsCenterToolbar: React.FC<{
       <h1 className="hidden shrink-0 text-base font-semibold tracking-tight text-foreground sm:block">
         {translate('settingsCenterTitle')}
       </h1>
-      <div className="relative min-w-0 flex-1 sm:ml-3 sm:max-w-xl">
+      <div className="non-draggable relative min-w-0 flex-1 sm:ml-3 sm:max-w-xl">
         <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-secondary" />
         <input
           type="search"
@@ -91,7 +91,7 @@ export const SettingsCenterToolbar: React.FC<{
         type="button"
         onClick={onClose}
         aria-label={translate('close')}
-        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-secondary transition-colors hover:bg-surface-raised hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        className="non-draggable inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-secondary transition-colors hover:bg-surface-raised hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         <XMarkIcon className="h-5 w-5" />
       </button>
@@ -105,7 +105,7 @@ export const SettingsActionBar: React.FC<{
   translate: Translate;
   onCancel: () => void;
 }> = ({ isSaving, disabled, translate, onCancel }) => (
-  <div className="hidden shrink-0 items-center gap-2 md:flex">
+  <div className="non-draggable hidden shrink-0 items-center gap-2 md:flex">
     <button
       type="button"
       onClick={onCancel}

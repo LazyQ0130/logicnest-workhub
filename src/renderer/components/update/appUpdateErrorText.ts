@@ -4,10 +4,11 @@ import {
   APP_UPDATE_URL_UNTRUSTED_ERROR,
 } from '../../../shared/appUpdate/constants';
 import { i18nService } from '../../services/i18n';
+import { formatUserFacingError } from '../../services/userFacingError';
 
 /**
- * Maps stable main-process error markers to localized text. Anything else is
- * an OS/network message shown as-is.
+ * Maps stable main-process error markers and unexpected OS/network failures
+ * to customer-safe localized text.
  */
 export const formatAppUpdateError = (message: string): string => {
   if (message === APP_UPDATE_ELEVATION_DECLINED_ERROR) {
@@ -19,5 +20,5 @@ export const formatAppUpdateError = (message: string): string => {
   if (message === APP_UPDATE_FILE_INVALID_ERROR) {
     return i18nService.t('updateFileInvalid');
   }
-  return message;
+  return formatUserFacingError(message, { fallbackKey: 'updateCheckFailed' });
 };

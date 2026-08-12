@@ -4652,7 +4652,6 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       <div className="flex-1 flex flex-col h-full overflow-hidden">
       {/* Header — spans full width */}
       <div
-        data-skin-session-titlebar="true"
         className={`draggable flex h-12 items-center justify-between border-b border-border bg-background shrink-0 ${
           isArtifactPanelExpanded ? 'pl-0 pr-4' : 'px-4'
         }`}
@@ -4850,7 +4849,6 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
                     <div className="h-full w-9 shrink-0" aria-hidden="true" />
                   ) : (
                     <div
-                      data-skin-artifact-add-tab="true"
                       className="z-20 flex h-full shrink-0 items-center bg-background pl-1 pr-1"
                     >
                       <button
@@ -4871,7 +4869,6 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
                 </div>
                 {shouldPinArtifactAddTab && (
                   <div
-                    data-skin-artifact-add-tab="true"
                     className="absolute inset-y-0 right-0 z-20 flex items-center bg-background pl-1 pr-1"
                   >
                     <button

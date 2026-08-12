@@ -1,4 +1,5 @@
 import { exec, execFile, spawn } from 'child_process';
+import { createHash } from 'crypto';
 import { app, session, shell } from 'electron';
 import fs from 'fs';
 import path from 'path';
@@ -84,6 +85,7 @@ export async function downloadUpdate(
   url: string,
   source: AppUpdateSource,
   onProgress: (progress: AppUpdateDownloadProgress) => void,
+  expected?: { sha256?: string; sizeBytes?: number },
 ): Promise<AppUpdateDownloadResult> {
   if (activeDownloadController) {
     throw new Error('A download is already in progress');
@@ -228,6 +230,18 @@ export async function downloadUpdate(
       throw new Error(`Download incomplete: expected ${total} bytes but got ${stat.size}`);
     }
 
+    if (expected?.sizeBytes && stat.size !== expected.sizeBytes) {
+      throw new Error(`Download size mismatch: expected ${expected.sizeBytes} bytes but got ${stat.size}`);
+    }
+
+    const expectedHash = expected?.sha256?.trim().toLowerCase() || response.headers.get('x-content-sha256')?.trim().toLowerCase();
+    if (expectedHash) {
+      const actualHash = await hashFile(downloadPath);
+      if (actualHash !== expectedHash) {
+        throw new Error(`Download hash mismatch: expected ${expectedHash} but got ${actualHash}`);
+      }
+    }
+
     // Rename to final path (atomic on same filesystem)
     await fs.promises.rename(downloadPath, finalPath);
     console.log(`[AppUpdate] File saved to: ${finalPath}`);
@@ -276,6 +290,13 @@ export async function downloadUpdate(
   } finally {
     activeDownloadController = null;
   }
+}
+
+async function hashFile(filePath: string): Promise<string> {
+  const hash = createHash('sha256');
+  const stream = fs.createReadStream(filePath);
+  for await (const chunk of stream) hash.update(chunk as Buffer);
+  return hash.digest('hex');
 }
 
 export interface InstallUpdateOptions {

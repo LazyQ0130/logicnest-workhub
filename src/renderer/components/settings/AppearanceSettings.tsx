@@ -4,7 +4,6 @@ import { BRAND } from '../../../shared/brand';
 import { FontPreferences } from '../../config';
 import { i18nService } from '../../services/i18n';
 import { themeService } from '../../services/theme';
-import SkinSettingsSection from '../skin/SkinSettingsSection';
 import { SettingsField, SettingsSection } from './SettingsCenterLayout';
 import { SettingsNumberInputRow } from './SettingsControls';
 
@@ -13,7 +12,6 @@ type ThemeMode = 'light' | 'dark' | 'system';
 interface AppearanceSettingsProps {
   theme: ThemeMode;
   themeId: string;
-  hasActiveSkin: boolean;
   isChanging: boolean;
   uiFontSize: number;
   codeFontSize: number;
@@ -21,13 +19,11 @@ interface AppearanceSettingsProps {
   onThemeIdChange: (themeId: string) => void | Promise<void>;
   onUiFontSizeChange: (value: number) => void;
   onCodeFontSizeChange: (value: number) => void;
-  onStartAiSkin?: (text: string, kitId: string) => void;
 }
 
 const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
   theme,
   themeId,
-  hasActiveSkin,
   isChanging,
   uiFontSize,
   codeFontSize,
@@ -35,7 +31,6 @@ const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
   onThemeIdChange,
   onUiFontSizeChange,
   onCodeFontSizeChange,
-  onStartAiSkin,
 }) => {
   const allThemes = themeService.getAllThemes()
     .filter((themeDefinition) => BRAND.appearance.visibleThemeIds.includes(themeDefinition.meta.id));
@@ -57,7 +52,7 @@ const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
       >
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {(['light', 'dark', 'system'] as const).map((mode) => {
-            const isSelected = !hasActiveSkin && theme === mode;
+            const isSelected = theme === mode;
             return (
               <button
                 key={mode}
@@ -91,7 +86,7 @@ const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
       >
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {allThemes.map((themeDefinition) => {
-            const isSelected = !hasActiveSkin && themeId === themeDefinition.meta.id;
+            const isSelected = themeId === themeDefinition.meta.id;
             return (
               <button
                 key={themeDefinition.meta.id}
@@ -118,10 +113,6 @@ const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
           })}
         </div>
       </SettingsSection>
-
-      <section className="border-t border-border py-7 lg:py-9">
-        <SkinSettingsSection onStartAiSkin={onStartAiSkin} />
-      </section>
 
       <SettingsSection
         title={i18nService.t('settingsAppearanceTypographyTitle')}

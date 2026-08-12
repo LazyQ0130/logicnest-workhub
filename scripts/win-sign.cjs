@@ -39,6 +39,7 @@ const SERVICE_URL_ENV = 'YD_SIGN_SERVICE_URL';
 const APP_KEY_ENV = 'YD_SIGN_APP_KEY';
 const APP_SECRET_ENV = 'YD_SIGN_APP_SECRET';
 const USERNAME_ENV = 'YD_SIGN_USERNAME';
+const RELEASE_BUILD_ENV = 'LOGICNEST_RELEASE_BUILD';
 
 const REQUEST_TIMEOUT_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS = 2;
@@ -229,6 +230,11 @@ async function signOnce(serviceConfig, filePath) {
 async function signFile(filePath) {
   const serviceConfig = resolveServiceConfig();
   if (!serviceConfig) {
+    if (process.env[RELEASE_BUILD_ENV] === '1') {
+      throw new Error(
+        `[WinSign] release build requires ${SERVICE_URL_ENV}/${APP_KEY_ENV}/${APP_SECRET_ENV}/${USERNAME_ENV}.`,
+      );
+    }
     if (!warnedAboutMissingCredentials) {
       warnedAboutMissingCredentials = true;
       console.warn(

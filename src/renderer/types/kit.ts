@@ -1,5 +1,4 @@
 import type { InstalledKitRecord, LocalizedText } from '../../shared/kit/constants';
-import type { SkinWorkflowKind } from '../../shared/skin/constants';
 
 export interface KitSkillRef {
   id: string;
@@ -18,8 +17,8 @@ export interface MarketplaceKit {
   description: string | LocalizedText;
   icon?: string;
   author?: string;
+  tags?: string[];
   version?: string;
-  workflowKind?: SkinWorkflowKind;
   downloadCount?: string;
   tryAsking?: (string | LocalizedText)[];
   skills?: KitSkillBundle;

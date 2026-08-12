@@ -55,7 +55,6 @@ const WindowsAppTitleBar: React.FC<WindowsAppTitleBarProps> = ({
 
   return (
     <div
-      data-skin-app-titlebar="true"
       className="draggable flex h-9 shrink-0 items-center justify-between border-b border-border bg-surface-raised pl-3"
     >
       <div

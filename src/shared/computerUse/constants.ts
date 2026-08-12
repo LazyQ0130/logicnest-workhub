@@ -11,7 +11,7 @@ export const ComputerUseSkillId = {
 export type ComputerUseSkillId = typeof ComputerUseSkillId[keyof typeof ComputerUseSkillId];
 
 export const ComputerUseKitBundle = {
-  BuiltIn: 'builtin://computer-use',
+  BuiltIn: 'https://ydhardwarebusiness.nosdn.127.net/2fa564627a3f1a0f3acedbc771d15f12.zip',
 } as const;
 export type ComputerUseKitBundle =
   typeof ComputerUseKitBundle[keyof typeof ComputerUseKitBundle];
@@ -37,7 +37,7 @@ export const ComputerUseKitMetadata = {
     zh: '电脑操作',
   } satisfies LocalizedText,
   SkillDescription: {
-    en: 'Use LobsterAI Computer Use tools to inspect and control Windows desktop applications.',
-    zh: '使用 LobsterAI 电脑操作工具检查和操作 Windows 桌面应用。',
+    en: 'Use LogicNest WorkHub Computer Use tools to inspect and control Windows desktop applications.',
+    zh: '使用逻栖工枢电脑操作工具检查和操作 Windows 桌面应用。',
   } satisfies LocalizedText,
 } as const;

@@ -50,6 +50,7 @@ interface TaskFormProps {
   task?: ScheduledTask;
   initialTemplate?: ScheduledTaskTemplate | null;
   onCancel: () => void;
+  onOpenMessagingSettings: () => void;
   onSaved: (newTaskId?: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
 }
@@ -104,6 +105,13 @@ interface FormState {
   notifyAccountId: string | undefined;
   modelId: string;
 }
+
+const ChannelOptionsStatus = {
+  Loading: 'loading',
+  Ready: 'ready',
+  Error: 'error',
+} as const;
+type ChannelOptionsStatus = typeof ChannelOptionsStatus[keyof typeof ChannelOptionsStatus];
 
 function nowDefaults() {
   const now = new Date();
@@ -288,6 +296,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
   task,
   initialTemplate = null,
   onCancel,
+  onOpenMessagingSettings,
   onSaved,
   onDirtyChange,
 }) => {
@@ -319,6 +328,10 @@ const TaskForm: React.FC<TaskFormProps> = ({
     }
     return base;
   });
+  const [channelOptionsStatus, setChannelOptionsStatus] = useState<ChannelOptionsStatus>(
+    ChannelOptionsStatus.Loading,
+  );
+  const [channelOptionsLoadVersion, setChannelOptionsLoadVersion] = useState(0);
   const [conversations, setConversations] = useState<ScheduledTaskConversationOption[]>([]);
   const [conversationsLoading, setConversationsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -385,24 +398,30 @@ const TaskForm: React.FC<TaskFormProps> = ({
 
   useEffect(() => {
     let cancelled = false;
-    void scheduledTaskService.listChannels().then(channels => {
-      if (cancelled || channels.length === 0) return;
-      setChannelOptions(current => {
-        // Use the server-returned order (DEFINITIONS order) as the base,
-        // then append any saved channel that is not in the list (e.g. disabled platform).
-        const next = [...channels];
-        for (const saved of current) {
-          if (!next.some(item => item.value === saved.value)) {
-            next.push(saved);
+    setChannelOptionsStatus(ChannelOptionsStatus.Loading);
+    void scheduledTaskService.listChannels()
+      .then(channels => {
+        if (cancelled) return;
+        setChannelOptions(current => {
+          // Use the server-returned order (DEFINITIONS order) as the base,
+          // then append any saved channel that is not in the list (e.g. disabled platform).
+          const next = [...channels];
+          for (const saved of current) {
+            if (!next.some(item => item.value === saved.value)) {
+              next.push(saved);
+            }
           }
-        }
-        return next;
+          return next;
+        });
+        setChannelOptionsStatus(ChannelOptionsStatus.Ready);
+      })
+      .catch(() => {
+        if (!cancelled) setChannelOptionsStatus(ChannelOptionsStatus.Error);
       });
-    });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [channelOptionsLoadVersion]);
 
   useEffect(() => {
     if (!showConversationSelector) {
@@ -1255,6 +1274,28 @@ const TaskForm: React.FC<TaskFormProps> = ({
     return option ? option.label : channelValue;
   };
 
+  const renderNoChannelMessage = () => (
+    <>
+      {i18nService.t('scheduledTasksFormNotifyChannelEmptyPrefix')}
+      <button
+        type="button"
+        className="font-medium text-primary underline decoration-primary/40 underline-offset-2 hover:text-primary-hover"
+        onClick={(event) => {
+          event.stopPropagation();
+          setChannelDropdownOpen(false);
+          reportScheduledTaskAction('open_messaging_settings', {
+            source: 'scheduled_task_form',
+            mode,
+          });
+          onOpenMessagingSettings();
+        }}
+      >
+        {i18nService.t('scheduledTasksFormNotifyChannelEmptyLink')}
+      </button>
+      {i18nService.t('scheduledTasksFormNotifyChannelEmptySuffix')}
+    </>
+  );
+
   const renderNotifyRow = () => {
     const selectedLogo = getChannelLogo(form.notifyChannel);
     // The notify target is a user-selectable conversation (group or DM) for the
@@ -1276,6 +1317,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
             <button
               type="button"
               onClick={() => setChannelDropdownOpen(!channelDropdownOpen)}
+              aria-busy={channelOptionsStatus === ChannelOptionsStatus.Loading}
               className={`${inputClass} w-full flex items-center justify-between cursor-pointer`}
             >
               <span className="flex items-center gap-2 truncate">
@@ -1337,6 +1379,31 @@ const TaskForm: React.FC<TaskFormProps> = ({
                       <CheckIcon className="h-4 w-4 shrink-0 text-emerald-500" />
                     )}
                   </button>
+                  {channelOptionsStatus === ChannelOptionsStatus.Loading && (
+                    <div className="px-3 py-2 text-[13px] text-secondary">
+                      {i18nService.t('scheduledTasksFormNotifyChannelLoading')}
+                    </div>
+                  )}
+                  {channelOptionsStatus === ChannelOptionsStatus.Error && (
+                    <div className="flex items-center justify-between gap-3 px-3 py-2 text-[13px] text-secondary">
+                      <span>{i18nService.t('scheduledTasksFormNotifyChannelLoadError')}</span>
+                      <button
+                        type="button"
+                        className="shrink-0 font-medium text-primary hover:text-primary-hover"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setChannelOptionsLoadVersion(version => version + 1);
+                        }}
+                      >
+                        {i18nService.t('scheduledTasksFormNotifyChannelRetry')}
+                      </button>
+                    </div>
+                  )}
+                  {channelOptionsStatus === ChannelOptionsStatus.Ready && channelOptions.length === 0 && (
+                    <div className="px-3 py-2 text-[13px] leading-5 text-secondary">
+                      {renderNoChannelMessage()}
+                    </div>
+                  )}
                   {channelOptions.map(channel => {
                     const logo = getChannelLogo(channel.value);
                     const displayName = formatChannelOptionLabel(channel, channelOptions);
@@ -1481,7 +1548,13 @@ const TaskForm: React.FC<TaskFormProps> = ({
           </div>
         ) : (
           <p className={hintClass}>
-            {i18nService.t('scheduledTasksFormNotifyChannelHint')}
+            {channelOptionsStatus === ChannelOptionsStatus.Loading
+              ? i18nService.t('scheduledTasksFormNotifyChannelLoading')
+              : channelOptionsStatus === ChannelOptionsStatus.Error
+                ? i18nService.t('scheduledTasksFormNotifyChannelLoadError')
+                : channelOptions.length === 0
+                  ? renderNoChannelMessage()
+                  : i18nService.t('scheduledTasksFormNotifyChannelHint')}
           </p>
         )}
       </div>

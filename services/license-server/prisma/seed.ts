@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import type { AdminRole } from '@prisma/client';
 import argon2 from 'argon2';
+import { seedCatalog } from './catalogSeed.js';
 
 const db = new PrismaClient();
 
@@ -32,6 +33,12 @@ async function main() {
   ) {
     await ensureQaAdmin('OPERATOR', process.env.QA_OPERATOR_USERNAME, process.env.QA_OPERATOR_PASSWORD);
     await ensureQaAdmin('AUDITOR', process.env.QA_AUDITOR_USERNAME, process.env.QA_AUDITOR_PASSWORD);
+  }
+  const catalogAdmin = await db.admin.findFirst({ where: { status: 'ACTIVE' }, orderBy: { createdAt: 'asc' } });
+  if (catalogAdmin) {
+    await seedCatalog(db, catalogAdmin, process.env.CATALOG_STORAGE_DIR || './catalog-storage');
+  } else {
+    console.warn('[seed] catalog skipped because no active administrator exists');
   }
 }
 

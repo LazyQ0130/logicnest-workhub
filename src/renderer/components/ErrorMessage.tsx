@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { formatUserFacingError } from '../services/userFacingError';
 import ExclamationTriangleIcon from './icons/ExclamationTriangleIcon';
 import XMarkIcon from './icons/XMarkIcon';
 
@@ -9,11 +10,12 @@ interface ErrorMessageProps {
 }
 
 const ErrorMessage: React.FC<ErrorMessageProps> = ({ message, onClose }) => {
+  const displayMessage = formatUserFacingError(message);
   return (
     <div className="flex items-center justify-between bg-gradient-to-r from-red-500/90 to-orange-500/90 text-white p-4 rounded-xl shadow-lg m-3 transition-all duration-200">
       <div className="flex items-center space-x-3">
         <ExclamationTriangleIcon className="h-5 w-5 text-white flex-shrink-0" />
-        <span className="text-sm font-medium">{message}</span>
+        <span className="text-sm font-medium">{displayMessage}</span>
       </div>
       {onClose && (
         <button

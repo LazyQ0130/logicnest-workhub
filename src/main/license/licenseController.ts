@@ -1,6 +1,6 @@
 import { type LicenseActionResult, type LicenseCredentials, type LicenseMembership, LicensePhase, type LicenseRegistration, type LicenseState, type LicenseUser } from '../../shared/license';
 import { getDeviceFingerprintDigest } from './deviceFingerprint';
-import { LicenseApiClient, LicenseApiError, type LicenseApiPayload } from './licenseApiClient';
+import { LicenseApiClient, LicenseApiError, type LicenseApiPayload, type LicenseCatalogItem, type LicenseCatalogResponse } from './licenseApiClient';
 import { validateOfflineLease } from './offlineLease';
 import type { LicenseSessionRecord, LicenseSessionStore } from './secureSessionStore';
 
@@ -12,6 +12,7 @@ const MAX_HEARTBEAT_SECONDS = 3_600;
 export interface LicenseControllerOptions {
   apiBaseUrl?: string;
   publicKeyPem?: string;
+  trustedCaPem?: string;
   heartbeatIntervalSeconds?: number;
   offlineGraceHours?: number;
   clientVersion: string;
@@ -58,7 +59,11 @@ export class LicenseController {
     this.onStateChanged = options.onStateChanged;
     this.onAuthorizationLost = options.onAuthorizationLost;
     const baseUrl = options.apiBaseUrl ?? process.env.LOGICNEST_LICENSE_API_URL;
-    this.api = baseUrl ? new LicenseApiClient({ baseUrl, fetchImpl: options.fetchImpl }) : null;
+    this.api = baseUrl ? new LicenseApiClient({
+      baseUrl,
+      fetchImpl: options.fetchImpl,
+      trustedCaPem: options.trustedCaPem,
+    }) : null;
     this.state.heartbeatAfterSeconds = clampPositive(
       options.heartbeatIntervalSeconds ?? numberEnv('LOGICNEST_HEARTBEAT_INTERVAL_SECONDS', DEFAULT_HEARTBEAT_SECONDS),
       MIN_HEARTBEAT_SECONDS,
@@ -100,7 +105,12 @@ export class LicenseController {
     if (input.passwordConfirmation !== input.password) {
       throw new LicenseApiError(400, 'PASSWORD_MISMATCH', '两次输入的密码不一致');
     }
-    const response = await this.requireApi().register({ ...credentials, passwordConfirmation: input.passwordConfirmation });
+    const response = await this.requireApi().register({
+      ...credentials,
+      passwordConfirmation: input.passwordConfirmation,
+      deviceFingerprint: this.deviceFingerprint,
+      clientVersion: this.clientVersion,
+    });
     if (!response.accessToken || !response.refreshToken) {
       await this.login(credentials);
     } else {
@@ -183,6 +193,24 @@ export class LicenseController {
     return this.heartbeatInFlight;
   }
 
+  public async fetchCatalog(kind?: LicenseCatalogItem['kind'], etag?: string): Promise<LicenseCatalogResponse> {
+    return this.withAuthorizedToken((accessToken) => this.requireApi().catalog(accessToken, kind, etag));
+  }
+
+  public async downloadCatalogAsset(itemId: string, role: string): Promise<Awaited<ReturnType<LicenseApiClient['downloadCatalogAsset']>>> {
+    return this.withAuthorizedToken((accessToken) => this.requireApi().downloadCatalogAsset(accessToken, itemId, role));
+  }
+
+  public fetchWithAuthorizedToken(url: string, options?: RequestInit): Promise<Response> {
+    return this.withAuthorizedToken(async (accessToken) => {
+      const response = await this.requireApi().requestAuthorized(accessToken, url, options);
+      if (response.status === 401) {
+        throw new LicenseApiError(401, 'SESSION_REQUIRED', '授权会话已过期');
+      }
+      return response;
+    });
+  }
+
   public async logout(): Promise<LicenseState> {
     const accessToken = this.session?.accessToken;
     const refreshToken = this.session?.refreshToken;
@@ -259,6 +287,20 @@ export class LicenseController {
     }
     this.scheduleHeartbeat();
     return this.getState();
+  }
+
+  private async withAuthorizedToken<T>(operation: (accessToken: string) => Promise<T>): Promise<T> {
+    if (!this.session?.accessToken) throw new LicenseApiError(401, 'SESSION_REQUIRED', '请先登录');
+    const currentToken = this.session.accessToken;
+    const expiry = this.session.accessTokenExpiresAt ? Date.parse(this.session.accessTokenExpiresAt) : Number.NaN;
+    if (Number.isFinite(expiry) && expiry - this.now() < 30_000) await this.refresh();
+    try {
+      return await operation(this.session?.accessToken ?? currentToken);
+    } catch (error) {
+      if (!(error instanceof LicenseApiError) || error.status !== 401) throw error;
+      await this.refresh();
+      return operation(this.session?.accessToken ?? currentToken);
+    }
   }
 
   private async applyOnlinePayload(payload: LicenseApiPayload): Promise<void> {

@@ -233,7 +233,14 @@ test('searchSessions finds matching titles beyond the recent page', () => {
   });
 
   expect(results.map((session) => session.id)).toEqual(['deep-match']);
+  expect(results[0].cwd).toBe('/tmp');
   expect(store.countSearchSessions({ query: 'history search needle' })).toBe(1);
+});
+
+test('listSessions includes the session working directory', () => {
+  insertSession('cwd-summary');
+
+  expect(store.listSessions(10, 0)[0].cwd).toBe('/tmp');
 });
 
 test('searchSessions preserves pinned ordering and pagination', () => {

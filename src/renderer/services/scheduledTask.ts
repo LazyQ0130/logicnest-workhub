@@ -338,14 +338,19 @@ export class ScheduledTaskService {
 
   async listChannels(): Promise<ScheduledTaskChannelOption[]> {
     const api = window.electron?.scheduledTasks;
-    if (!api?.listChannels) return [];
+    if (!api?.listChannels) {
+      throw new Error('Scheduled task channel API is unavailable');
+    }
 
     try {
       const result = await api.listChannels();
-      return result.success && result.channels ? result.channels : [];
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to load scheduled task channels');
+      }
+      return result.channels ?? [];
     } catch (err: unknown) {
       store.dispatch(setError(err instanceof Error ? err.message : String(err)));
-      return [];
+      throw err;
     }
   }
 

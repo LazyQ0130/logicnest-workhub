@@ -13,6 +13,7 @@ import {
 import type { CoworkGoal } from '../../../shared/cowork/goal';
 import { dedupeArtifactsForDisplay } from '../../services/artifactParser';
 import { i18nService } from '../../services/i18n';
+import { formatUserFacingError } from '../../services/userFacingError';
 import type { Artifact } from '../../types/artifact';
 import type { CoworkMessage, CoworkMessageMetadata } from '../../types/cowork';
 import { revealLocalPathWithToast } from '../../utils/localFileActions';
@@ -139,7 +140,7 @@ const getSystemMessageDisplayContent = (message: CoworkMessage, content: string)
   if (!errorText) return content;
 
   const key = classifyErrorKey(errorText) ?? classifyErrorKey(content);
-  return key ? i18nService.t(key) : content;
+  return key ? i18nService.t(key) : formatUserFacingError(errorText || content);
 };
 
 // ── SystemErrorTechnicalDetail ───────────────────────────────────────────────
@@ -182,6 +183,7 @@ const buildErrorModelLine = (detail: CoworkErrorDetail): string | null => {
 const SystemErrorTechnicalDetail: React.FC<{ detail: CoworkErrorDetail }> = ({ detail }) => {
   const [expanded, setExpanded] = useState(false);
   const detailText = useMemo(() => formatCoworkErrorDetailText(detail), [detail]);
+  if (i18nService.getLanguage() === 'zh') return null;
   if (!detailText) return null;
 
   return (

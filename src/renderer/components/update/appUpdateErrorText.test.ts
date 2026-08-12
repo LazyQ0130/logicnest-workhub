@@ -35,7 +35,17 @@ describe('formatAppUpdateError', () => {
     );
   });
 
-  test('preserves unknown operating-system messages', () => {
+  test('hides unknown English operating-system messages in Chinese', () => {
+    i18nService.setLanguage('zh', { persist: false });
+
+    const message = formatAppUpdateError('Access is denied.');
+    expect(message).toContain('检查失败');
+    expect(message).not.toContain('Access is denied.');
+  });
+
+  test('preserves unknown operating-system messages in English', () => {
+    i18nService.setLanguage('en', { persist: false });
+
     expect(formatAppUpdateError('Access is denied.')).toBe('Access is denied.');
   });
 });

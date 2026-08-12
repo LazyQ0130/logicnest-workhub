@@ -189,12 +189,10 @@ describe('AppUpdateCoordinator', () => {
     const result = await coordinator.checkNow();
 
     expect(result.success).toBe(true);
-    expect(result.state.status).toBe(AppUpdateStatus.Ready);
-    expect(mocks.downloadUpdate).toHaveBeenCalledWith(
-      installerUrl,
-      AppUpdateSource.Auto,
-      expect.any(Function),
-    );
+    expect(result.state.status).toBe(AppUpdateStatus.Available);
+    expect(result.state.source).toBe(AppUpdateSource.Auto);
+    expect(result.state.info?.url).toBe(installerUrl);
+    expect(mocks.downloadUpdate).not.toHaveBeenCalled();
   });
 
   test('uses only the fixed download page when the Windows API omits an installer URL', async () => {

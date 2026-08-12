@@ -50,7 +50,6 @@ export interface InstalledKitRecord {
   id: string;
   version: string;
   installedAt: number;
-  workflowKind?: SkinWorkflowKind;
   skills: InstalledKitSkills | null;
   mcpServers: unknown[];
   connectors: unknown[];
@@ -63,4 +62,3 @@ export type KitStoreKey = typeof KitStoreKey[keyof typeof KitStoreKey];
 
 export const buildKitReferenceUri = (id: string): string =>
   `${KitReferenceScheme.Kit}://${encodeURIComponent(id)}@${KitReferenceSource.LobsterAiKits}`;
-import type { SkinWorkflowKind } from '../skin/constants';

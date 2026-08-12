@@ -2,6 +2,7 @@ import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { useCallback,useEffect, useState } from 'react';
 
 import { i18nService } from '../../services/i18n';
+import { formatUserFacingError } from '../../services/userFacingError';
 import { SchemaForm } from '../im/SchemaForm';
 
 interface PluginConfigPageProps {
@@ -117,7 +118,7 @@ export default function PluginConfigPage({ pluginId, onBack, initialConfig, onCo
         <div className="text-sm text-muted-foreground py-8 text-center">Loading...</div>
       ) : error ? (
         <div className="text-sm text-destructive bg-destructive/10 rounded-lg p-4">
-          {error}
+          {formatUserFacingError(error, { fallbackKey: 'pluginsConfigLoadError' })}
         </div>
       ) : !schema ? (
         <div className="text-sm text-muted-foreground py-8 text-center">

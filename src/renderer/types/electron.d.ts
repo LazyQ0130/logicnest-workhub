@@ -112,14 +112,6 @@ import type {
   SiteUpdateAccessStatusInput,
   SiteUpdateTitleInput,
 } from '../../shared/site/constants';
-import type {
-  SkinApplyResponse,
-  SkinBindThemeResponse,
-  SkinDeactivateResponse,
-  SkinDeleteResponse,
-  SkinGetActiveResponse,
-  SkinListResponse,
-} from '../../shared/skin/types';
 import type { CoworkTempDirPreview } from './cowork';
 interface ApiResponse {
   ok: boolean;
@@ -185,6 +177,7 @@ interface CoworkSessionSummary {
   status: 'idle' | 'running' | 'completed' | 'error';
   pinned: boolean;
   pinOrder?: number | null;
+  cwd: string;
   agentId?: string;
   parentSessionId?: string | null;
   forkedAt?: number | null;
@@ -711,15 +704,6 @@ interface IElectronAPI {
       installed?: Record<string, InstalledKitRecord>;
       error?: string;
     }>;
-  };
-  skin: {
-    getActive: () => Promise<SkinGetActiveResponse>;
-    list: () => Promise<SkinListResponse>;
-    apply: (skinId: string, boundThemeId?: string) => Promise<SkinApplyResponse>;
-    bindTheme: (skinId: string, themeId: string) => Promise<SkinBindThemeResponse>;
-    deactivate: () => Promise<SkinDeactivateResponse>;
-    delete: (skinId: string) => Promise<SkinDeleteResponse>;
-    onChanged: (callback: () => void) => () => void;
   };
   agents: {
     list: () => Promise<Agent[]>;

@@ -52,7 +52,9 @@ export const startRealtimeVoiceRecording = async ({
   const source = audioContext.createMediaStreamSource(stream);
   const processor = audioContext.createScriptProcessor(4096, 1, 1);
   const mutedOutput = audioContext.createGain();
-  mutedOutput.gain.value = 0;
+  // Keep a non-zero, inaudible sink so Chromium continues pulling audio
+  // through ScriptProcessor on Windows instead of optimizing the graph away.
+  mutedOutput.gain.value = 0.0001;
 
   const pendingChunks: Float32Array[] = [];
   let pendingSourceSamples = 0;
@@ -90,6 +92,9 @@ export const startRealtimeVoiceRecording = async ({
   source.connect(processor);
   processor.connect(mutedOutput);
   mutedOutput.connect(audioContext.destination);
+  if (audioContext.state === 'suspended') {
+    await audioContext.resume();
+  }
 
   const cleanup = () => {
     if (stopped) return;
@@ -105,6 +110,7 @@ export const startRealtimeVoiceRecording = async ({
       cleanup();
       flush();
       await audioContext.close();
+      console.debug(`[VoiceInput] audio recorder captured ${outputSampleCount} samples.`);
       if (outputSampleCount < VOICE_INPUT_TARGET_SAMPLE_RATE * (VOICE_INPUT_MIN_RECORDING_MS / 1000)) {
         throw new AsrClientError(i18nService.t('voiceInputNoAudioCaptured'));
       }

@@ -28,11 +28,14 @@ services:
       HOST: 0.0.0.0
       PORT: 8787
       REQUIRE_HTTPS: "false" # terminate TLS at nginx/load balancer in production
+      CATALOG_STORAGE_DIR: /var/lib/logicnest/catalog
     depends_on:
       mysql:
         condition: service_healthy
     ports:
       - "127.0.0.1:${LICENSE_SERVER_PORT:-8787}:8787"
+    volumes:
+      - logicnest_catalog_data:/var/lib/logicnest/catalog
     networks: [license]
 
   admin-web:
@@ -48,6 +51,7 @@ services:
 
 volumes:
   logicnest_mysql_data:
+  logicnest_catalog_data:
 
 networks:
   license:
