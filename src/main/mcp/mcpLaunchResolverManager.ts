@@ -17,8 +17,10 @@ import {
 import type { McpServerRecord } from './mcpStore';
 import { McpStore } from './mcpStore';
 
-const INSTALL_TIMEOUT_MS = 120_000;
-const NPM_VIEW_TIMEOUT_MS = 20_000;
+// Dependency trees for browser and Google integrations can be large on a first
+// install. Keep the timeout long enough for a cold npm cache on a partner PC.
+const INSTALL_TIMEOUT_MS = 10 * 60_000;
+const NPM_VIEW_TIMEOUT_MS = 60_000;
 const STALE_INSTALLING_MS = INSTALL_TIMEOUT_MS + 30_000;
 
 type RunResult = {
@@ -244,6 +246,17 @@ function resolveNpmCommand(): NpmCommand {
   return resolveNodePackageCliCommand('npm');
 }
 
+function buildInstallEnv(packageName: string, env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  // The Playwright MCP package runs a postinstall browser download. The
+  // desktop client manages the browser runtime separately; downloading it
+  // during connector installation causes global Playwright lock contention
+  // and makes otherwise valid packages appear to fail.
+  if (packageName === '@executeautomation/playwright-mcp-server') {
+    return { ...env, PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1' };
+  }
+  return env;
+}
+
 function resolveNodeCommand(): { command: string; env: Record<string, string> } {
   const runtime = resolveNodeRuntimeForSpawn();
   return { command: runtime.command, env: runtime.env as Record<string, string> };
@@ -414,7 +427,11 @@ export class McpLaunchResolverManager {
           '--no-fund',
           parsed.installSpec,
         ],
-        { env: npm.env, shell: npm.shell, timeoutMs: INSTALL_TIMEOUT_MS },
+        {
+          env: buildInstallEnv(parsed.packageName, npm.env),
+          shell: npm.shell,
+          timeoutMs: INSTALL_TIMEOUT_MS,
+        },
       );
       log(
         'INFO',

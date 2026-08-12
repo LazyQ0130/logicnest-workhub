@@ -295,7 +295,23 @@ export async function seedCatalog(db: PrismaClient, admin: Admin, storageDirecto
     });
     const version = entry.version ?? DEFAULT_CATALOG_VERSION;
     const existing = await db.catalogRelease.findUnique({ where: { itemId_version: { itemId: item.id, version } } });
-    if (existing) continue;
+    if (existing) {
+      // Reconcile assets for idempotent upgrades. Older production seeds could
+      // have created computer-use without its runtime asset; keep the release
+      // and user data, but add the verified runtime exactly once.
+      if (entry.kind === 'KIT' && entry.slug === 'computer-use') {
+        const hasRuntime = await db.catalogAsset.findFirst({
+          where: { releaseId: existing.id, role: 'RUNTIME' },
+          select: { id: true },
+        });
+        if (!hasRuntime) {
+          const runtime = await buildComputerUseRuntime(storageDir);
+          await db.catalogAsset.create({ id: randomUUID(), releaseId: existing.id, ...runtime, role: 'RUNTIME' });
+          console.log('[seed] repaired computer-use runtime asset');
+        }
+      }
+      continue;
+    }
 
     const assets = entry.kind === 'CONNECTOR'
       ? []
