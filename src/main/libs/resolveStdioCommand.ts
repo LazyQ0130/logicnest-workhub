@@ -13,7 +13,11 @@ import path from 'path';
 
 import type { McpServerRecord } from '../mcp/mcpStore';
 import { getElectronNodeRuntimePath } from './coworkUtil';
-import { findSpawnableSystemNodePath } from './nodeRuntime';
+import {
+  findSpawnableSystemNodePath,
+  getBundledNpmRuntimeRoot,
+  isBundledNpmRuntimeComplete,
+} from './nodeRuntime';
 
 export interface ResolvedStdioCommand {
   command: string;
@@ -28,7 +32,12 @@ export interface ResolvedStdioCommand {
  */
 function getPackagedNpmBinDir(): string | undefined {
   if (!app.isPackaged) return undefined;
-  const npmBinDir = path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'npm', 'bin');
+  const npmRoot = getBundledNpmRuntimeRoot();
+  if (!isBundledNpmRuntimeComplete(npmRoot)) {
+    log('WARN', `bundled npm runtime is incomplete at ${npmRoot}`);
+    return undefined;
+  }
+  const npmBinDir = path.join(npmRoot, 'bin');
   return fs.existsSync(npmBinDir) ? npmBinDir : undefined;
 }
 

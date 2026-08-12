@@ -230,6 +230,18 @@
         ]
       },
       {
+        "from": "resources/npm-runtime",
+        "to": "npm-runtime",
+        "filter": [
+          "**/*",
+          "!**/.cache/**",
+          "!**/test/**",
+          "!**/tests/**",
+          "!**/*.test.*",
+          "!**/*.spec.*"
+        ]
+      },
+      {
         "from": "SKILLs",
         "to": "SKILLs",
         "filter": [

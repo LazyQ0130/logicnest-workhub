@@ -11,7 +11,11 @@ import { isComputerUseKitInstalled } from '../computerUse/computerUseKit';
 import { cpRecursiveSync } from '../fsCompat';
 import { t } from '../i18n';
 import { getElectronNodeRuntimePath } from '../libs/coworkUtil';
-import { resolveNodeRuntimeForSpawn } from '../libs/nodeRuntime';
+import {
+  getBundledNpmRuntimeRoot,
+  isBundledNpmRuntimeComplete,
+  resolveNodeRuntimeForSpawn,
+} from '../libs/nodeRuntime';
 import { appendPythonRuntimeToEnv } from '../libs/pythonRuntime';
 import { mergeReports,scanMultipleSkillDirs } from '../libs/skillSecurity/skillSecurityScanner';
 import type { SecurityReportAction,SkillSecurityReport } from '../libs/skillSecurity/skillSecurityTypes';
@@ -1065,12 +1069,12 @@ const parseClawhubUrl = (source: string): { name: string } | null => {
  */
 const resolveNpxCliJs = (): string | null => {
   const candidates = app.isPackaged
-    ? [path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'npm', 'bin', 'npx-cli.js')]
+    ? [path.join(getBundledNpmRuntimeRoot(), 'bin', 'npx-cli.js')]
     : [
         path.join(app.getAppPath(), 'node_modules', 'npm', 'bin', 'npx-cli.js'),
         path.join(process.cwd(), 'node_modules', 'npm', 'bin', 'npx-cli.js'),
       ];
-  return candidates.find(c => fs.existsSync(c)) || null;
+  return candidates.find(c => fs.existsSync(c) && isBundledNpmRuntimeComplete(path.dirname(path.dirname(c)))) || null;
 };
 
 /**
@@ -1142,12 +1146,12 @@ const downloadClawhubSkill = async (
  */
 const resolveNpmCliJs = (): string | null => {
   const candidates = app.isPackaged
-    ? [path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'npm', 'bin', 'npm-cli.js')]
+    ? [path.join(getBundledNpmRuntimeRoot(), 'bin', 'npm-cli.js')]
     : [
         path.join(app.getAppPath(), 'node_modules', 'npm', 'bin', 'npm-cli.js'),
         path.join(process.cwd(), 'node_modules', 'npm', 'bin', 'npm-cli.js'),
       ];
-  return candidates.find(c => fs.existsSync(c)) || null;
+  return candidates.find(c => fs.existsSync(c) && isBundledNpmRuntimeComplete(path.dirname(path.dirname(c)))) || null;
 };
 
 /**

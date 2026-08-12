@@ -36,6 +36,7 @@ resources/PortableGit-*.7z.exe
 resources/python-win/
 resources/python-*.zip
 resources/asr-models/
+resources/npm-runtime/
 
 # SKILLs runtime files
 SKILLs/**/.connection
