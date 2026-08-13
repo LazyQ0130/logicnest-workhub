@@ -17,6 +17,119 @@ function isMacTarget(context) {
   return context?.electronPlatformName === 'darwin';
 }
 
+const REQUIRED_WINDOWS_OPENCLAW_RUNTIME_FILES = [
+  path.join('node_modules', 'jiti', 'package.json'),
+  path.join('node_modules', 'jiti', 'lib', 'jiti.cjs'),
+  path.join('node_modules', 'jiti', 'dist', 'babel.cjs'),
+];
+
+function verifyWindowsPackagedOpenClawRuntime(appOutDir) {
+  const runtimeRoot = path.join(appOutDir, 'resources', 'cfmind');
+  const missing = REQUIRED_WINDOWS_OPENCLAW_RUNTIME_FILES.filter(
+    relativePath => !existsSync(path.join(runtimeRoot, relativePath)),
+  );
+  if (missing.length > 0) {
+    throw new Error(
+      '[electron-builder-hooks] Packaged OpenClaw runtime is missing required external files: '
+      + missing.join(', '),
+    );
+  }
+  console.log('[electron-builder-hooks] Verified packaged OpenClaw external runtime dependencies.');
+}
+
+const REQUIRED_NPM_RUNTIME_DEPENDENCIES = [
+  'graceful-fs',
+  path.join('@npmcli', 'arborist'),
+  'npm-registry-fetch',
+  'cacache',
+];
+
+function verifyWindowsPackagedNpmRuntime(appOutDir) {
+  const runtimeRoot = path.join(appOutDir, 'resources', 'npm-runtime');
+  const npmCli = path.join(runtimeRoot, 'bin', 'npm-cli.js');
+  const npxCli = path.join(runtimeRoot, 'bin', 'npx-cli.js');
+  const missing = [npmCli, npxCli, ...REQUIRED_NPM_RUNTIME_DEPENDENCIES.map(dependency => (
+    path.join(runtimeRoot, 'node_modules', dependency)
+  ))].filter(candidate => !existsSync(candidate));
+  if (missing.length > 0) {
+    throw new Error(
+      '[electron-builder-hooks] Packaged npm runtime is incomplete. Missing: '
+      + missing.join(', '),
+    );
+  }
+
+  const env = { ...process.env };
+  const version = spawnSync(process.execPath, [npmCli, '--version'], {
+    env,
+    encoding: 'utf8',
+    timeout: 30000,
+    windowsHide: true,
+  });
+  if (version.status !== 0 || !/^\d+\.\d+\.\d+/.test((version.stdout || '').trim())) {
+    throw new Error(
+      '[electron-builder-hooks] Packaged npm --version smoke test failed: '
+      + (version.stderr || version.stdout || `exit=${version.status}`),
+    );
+  }
+
+  const metadata = spawnSync(
+    process.execPath,
+    [npmCli, 'view', '@upstash/context7-mcp@latest', 'version', '--json'],
+    { env, encoding: 'utf8', timeout: 60000, windowsHide: true },
+  );
+  if (metadata.status !== 0 || !metadata.stdout?.trim()) {
+    throw new Error(
+      '[electron-builder-hooks] Packaged npm registry smoke test failed: '
+      + (metadata.stderr || metadata.stdout || `exit=${metadata.status}`),
+    );
+  }
+  console.log('[electron-builder-hooks] Verified complete packaged npm runtime and registry access.');
+}
+
+function verifyWindowsPackagedNativeModules(appOutDir) {
+  // Use the build-time Electron binary so Windows does not keep the packaged
+  // executable locked while electron-builder edits its version resources.
+  const executable = path.join(__dirname, '..', 'node_modules', 'electron', 'dist', 'electron.exe');
+  const betterSqlite3 = path.join(
+    appOutDir,
+    'resources',
+    'app.asar',
+    'node_modules',
+    'better-sqlite3',
+  );
+  const probe = [
+    "const Database = require(process.argv[1]);",
+    "const db = new Database(':memory:');",
+    "db.prepare('select 1 as value').get();",
+    'db.close();',
+    "console.log('PACKAGED_NATIVE_MODULES_OK');",
+  ].join(' ');
+  const result = spawnSync(executable, ['-e', probe, betterSqlite3], {
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    encoding: 'utf8',
+    timeout: 30000,
+    windowsHide: true,
+  });
+
+  if (result.status !== 0 || !result.stdout?.includes('PACKAGED_NATIVE_MODULES_OK')) {
+    throw new Error(
+      '[electron-builder-hooks] Packaged Electron cannot load better-sqlite3. '
+      + (result.stderr || result.stdout || `exit=${result.status}`),
+    );
+  }
+  console.log('[electron-builder-hooks] Verified packaged native modules against Electron ABI.');
+}
+
+function restorePackagedNpmRuntime(appOutDir) {
+  const sourceRoot = path.join(__dirname, '..', 'resources', 'npm-runtime');
+  const targetRoot = path.join(appOutDir, 'resources', 'npm-runtime');
+  if (!existsSync(sourceRoot)) {
+    throw new Error(`[electron-builder-hooks] npm runtime source is missing: ${sourceRoot}`);
+  }
+  cpSync(sourceRoot, targetRoot, { recursive: true, force: true, dereference: true });
+  console.log('[electron-builder-hooks] Restored complete npm runtime after electron-builder resource processing.');
+}
+
 function resolveTargetArch(context) {
   if (context?.arch === 3) return 'arm64';
   if (context?.arch === 0) return 'ia32';
@@ -600,6 +713,13 @@ async function afterPack(context) {
     }
   }
 
+  if (isWindowsTarget(context)) {
+    restorePackagedNpmRuntime(context.appOutDir);
+    verifyWindowsPackagedNativeModules(context.appOutDir);
+    verifyWindowsPackagedOpenClawRuntime(context.appOutDir);
+    verifyWindowsPackagedNpmRuntime(context.appOutDir);
+  }
+
   // Windows binaries need no extra handling here: with win.sign configured,
   // electron-builder routes the app exe, uninstaller and installer through
   // scripts/win-sign.cjs, and the NSIS target's CopyElevateHelper signs
@@ -609,4 +729,7 @@ async function afterPack(context) {
 module.exports = {
   beforePack,
   afterPack,
+  verifyWindowsPackagedOpenClawRuntime,
+  verifyWindowsPackagedNpmRuntime,
+  verifyWindowsPackagedNativeModules,
 };

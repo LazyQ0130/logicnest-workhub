@@ -18,6 +18,7 @@ const MAX_HEARTBEAT_SECONDS = 3_600;
 export interface LicenseControllerOptions {
   apiBaseUrl?: string;
   publicKeyPem?: string;
+  trustedCaPem?: string;
   heartbeatIntervalSeconds?: number;
   offlineGraceHours?: number;
   clientVersion: string;
@@ -64,7 +65,11 @@ export class LicenseController {
     this.onStateChanged = options.onStateChanged;
     this.onAuthorizationLost = options.onAuthorizationLost;
     const baseUrl = options.apiBaseUrl ?? process.env.LOGICNEST_LICENSE_API_URL;
-    this.api = baseUrl ? new LicenseApiClient({ baseUrl, fetchImpl: options.fetchImpl }) : null;
+    this.api = baseUrl ? new LicenseApiClient({
+      baseUrl,
+      fetchImpl: options.fetchImpl,
+      trustedCaPem: options.trustedCaPem,
+    }) : null;
     this.state.heartbeatAfterSeconds = clampPositive(
       options.heartbeatIntervalSeconds ?? numberEnv('LOGICNEST_HEARTBEAT_INTERVAL_SECONDS', DEFAULT_HEARTBEAT_SECONDS),
       MIN_HEARTBEAT_SECONDS,

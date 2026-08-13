@@ -6,7 +6,7 @@
     "name": "LogicNest WorkHub"
   },
   "license": "MIT",
-  "version": "2026.7.31",
+  "version": "2026.8.10",
   "openclaw": {
     "version": "v2026.6.1",
     "repo": "https://github.com/openclaw/openclaw.git",
@@ -49,7 +49,7 @@
     "lint": "eslint src/",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepare": "husky",
+    "prepare": "node scripts/prepare-husky.cjs",
     "brand:assets": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/generate-logicnest-brand-assets.ps1",
     "brand:scan": "node scripts/brand-scan.cjs",
     "license:install": "npm install --prefix services/license-server",
