@@ -35,7 +35,7 @@
     "argon2": "^0.45.0",
     "fastify": "^5.6.2",
     "fastify-plugin": "^5.1.0",
-    "jose": "^6.1.2",
+    "jose": "^6.2.8",
     "jszip": "^3.10.1",
     "logicnest-workhub": "file:../..",
     "pino": "^10.1.0",
