@@ -41,7 +41,7 @@
   },
   "features": {
     "analytics": false,
-    "officialUpdates": false,
+    "officialUpdates": true,
     "remoteExpertKits": false,
     "unauditedImChannels": false
   },

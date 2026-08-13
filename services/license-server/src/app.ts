@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastif
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
+import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import sensible from '@fastify/sensible';
 import type { PrismaClient } from '@prisma/client';
@@ -14,11 +15,15 @@ import { registerClientRoutes } from './routes/client.js';
 import { registerAdminRoutes } from './routes/admin.js';
 import { ClientService } from './services/clientService.js';
 import { AdminService } from './services/adminService.js';
+import { CatalogService } from './services/catalogService.js';
+import { DesktopReleaseService } from './services/desktopReleaseService.js';
 
 export type AppDependencies = {
   db?: PrismaClient;
   clientService?: ClientService;
   adminService?: AdminService;
+  catalogService?: CatalogService;
+  desktopReleaseService?: DesktopReleaseService;
 };
 
 const RATE_LIMIT_ERROR_CODE = 'RATE_LIMITED';
@@ -47,6 +52,8 @@ export const buildApp = async (config: AppConfig, dependencies: AppDependencies 
   const db = dependencies.db ?? createDb(config);
   const clientService = dependencies.clientService ?? new ClientService(db, config);
   const adminService = dependencies.adminService ?? new AdminService(db, config);
+  const catalogService = dependencies.catalogService ?? new CatalogService(db, config);
+  const desktopReleaseService = dependencies.desktopReleaseService ?? new DesktopReleaseService(db, config);
 
   app.setNotFoundHandler((request, reply) => reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Route not found', requestId: request.id } }));
   app.setErrorHandler((error, request, reply) => {
@@ -66,6 +73,9 @@ export const buildApp = async (config: AppConfig, dependencies: AppDependencies 
 
   await app.register(sensible);
   await app.register(cookie);
+  await app.register(multipart, {
+    limits: { files: 1, fields: 12, fileSize: Math.max(config.catalogUploadMaxBytes, config.updateUploadMaxBytes) },
+  });
   await app.register(helmet, {
     contentSecurityPolicy: {
       directives: {
@@ -102,7 +112,7 @@ export const buildApp = async (config: AppConfig, dependencies: AppDependencies 
     request.originAllowed = !request.headers.origin || config.allowedOrigins.includes(request.headers.origin);
   });
   app.addHook('onSend', async (request, reply, payload) => {
-    reply.header('Cache-Control', 'no-store');
+    if (!reply.hasHeader('Cache-Control')) reply.header('Cache-Control', 'no-store');
     reply.header('X-Request-Id', request.id);
     return payload;
   });
@@ -117,8 +127,8 @@ export const buildApp = async (config: AppConfig, dependencies: AppDependencies 
     }
   });
 
-  await app.register(registerClientRoutes, { prefix: '/api/v1', db, config, service: clientService });
-  await app.register(registerAdminRoutes, { prefix: '/api/v1/admin', db, config, service: adminService });
+  await app.register(registerClientRoutes, { prefix: '/api/v1', db, config, service: clientService, catalogService, desktopReleaseService });
+  await app.register(registerAdminRoutes, { prefix: '/api/v1/admin', db, config, service: adminService, catalogService, desktopReleaseService });
 
   app.addHook('onClose', async () => {
     if (!dependencies.db) await closeDb(db);

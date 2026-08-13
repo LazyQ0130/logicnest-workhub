@@ -30,6 +30,15 @@ const getFocusableElements = (container: HTMLElement): HTMLElement[] => (
     .filter((element) => element.getAttribute('aria-hidden') !== 'true')
 );
 
+type BackgroundState = {
+  element: HTMLElement & { inert: boolean };
+  ariaHidden: string | null;
+  inert: boolean;
+};
+
+let activeModalCount = 0;
+let backgroundStates: BackgroundState[] = [];
+
 /**
  * Modal — A base modal overlay component with correct close-on-backdrop behavior.
  *
@@ -74,18 +83,21 @@ const Modal: React.FC<ModalProps> = ({
       ? document.activeElement
       : null;
 
-    const backgroundStates = Array.from(document.body.children)
-      .filter((element) => element !== overlayRef.current)
-      .map((element) => ({
-        element: element as HTMLElement & { inert: boolean },
-        ariaHidden: element.getAttribute('aria-hidden'),
-        inert: (element as HTMLElement & { inert: boolean }).inert,
-      }));
+    if (activeModalCount === 0) {
+      backgroundStates = Array.from(document.body.children)
+        .filter((element) => element !== overlayRef.current)
+        .map((element) => ({
+          element: element as HTMLElement & { inert: boolean },
+          ariaHidden: element.getAttribute('aria-hidden'),
+          inert: (element as HTMLElement & { inert: boolean }).inert,
+        }));
 
-    backgroundStates.forEach(({ element }) => {
-      element.inert = true;
-      element.setAttribute('aria-hidden', 'true');
-    });
+      backgroundStates.forEach(({ element }) => {
+        element.inert = true;
+        element.setAttribute('aria-hidden', 'true');
+      });
+    }
+    activeModalCount += 1;
 
     const focusTarget = initialFocusRef?.current
       ?? dialogRef.current?.querySelector<HTMLElement>('[autofocus], [data-modal-initial-focus]')
@@ -124,11 +136,15 @@ const Modal: React.FC<ModalProps> = ({
     document.addEventListener('keydown', handleKeyDown, true);
     return () => {
       document.removeEventListener('keydown', handleKeyDown, true);
-      backgroundStates.forEach(({ element, ariaHidden, inert }) => {
-        element.inert = inert;
-        if (ariaHidden === null) element.removeAttribute('aria-hidden');
-        else element.setAttribute('aria-hidden', ariaHidden);
-      });
+      activeModalCount = Math.max(0, activeModalCount - 1);
+      if (activeModalCount === 0) {
+        backgroundStates.forEach(({ element, ariaHidden, inert }) => {
+          element.inert = inert;
+          if (ariaHidden === null) element.removeAttribute('aria-hidden');
+          else element.setAttribute('aria-hidden', ariaHidden);
+        });
+        backgroundStates = [];
+      }
       const previousFocus = previousFocusRef.current;
       if (previousFocus?.isConnected) previousFocus.focus();
     };

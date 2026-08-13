@@ -507,6 +507,17 @@ textarea {
 
 .mobile-generate-button { display: none; }
 
+.catalog-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.catalog-toolbar .ant-tabs { min-width: 360px; margin-bottom: -12px; }
+.catalog-slug { font-size: 12px; }
+
 .auth-page {
   position: relative;
   display: grid;
@@ -607,6 +618,8 @@ textarea {
   .stat-card .ant-statistic-content { font-size: 25px; }
   .quick-action-grid { grid-template-columns: 1fr; }
   .generated-key-list { grid-template-columns: 1fr; }
+  .catalog-toolbar { align-items: stretch; flex-direction: column; }
+  .catalog-toolbar .ant-tabs { min-width: 0; }
   .mobile-generate-button { display: inline-flex; margin-top: 12px; }
   .login-card { padding: 28px 22px; }
 }

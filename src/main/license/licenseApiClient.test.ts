@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { describe, expect, test, vi } from 'vitest';
 
 import { LicenseApiClient, LicenseApiError } from './licenseApiClient';
@@ -110,6 +112,48 @@ describe('LicenseApiClient', () => {
     expect(result).toMatchObject({
       membership: { status: 'none' },
       device: null,
+    });
+  });
+
+  test('loads a filtered authorized catalog and forwards the cache ETag', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+      items: [{
+        id: '11111111-1111-1111-1111-111111111111',
+        releaseId: '22222222-2222-2222-2222-222222222222',
+        kind: 'SKILL',
+        slug: 'demo-skill',
+        version: '1.0.0',
+        nameZh: '演示能力',
+        descriptionZh: '用于测试目录同步',
+        assets: [],
+      }],
+    }), { status: 200, headers: { etag: '"catalog-v1"' } }));
+    const client = new LicenseApiClient({ baseUrl: 'https://license.example/api/v1', fetchImpl: fetchMock });
+
+    await expect(client.catalog('access-token', 'SKILL', '"catalog-v0"')).resolves.toMatchObject({
+      items: [{ slug: 'demo-skill', kind: 'SKILL' }],
+      etag: '"catalog-v1"',
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://license.example/api/v1/catalog?kind=SKILL');
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get('authorization')).toBe('Bearer access-token');
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get('if-none-match')).toBe('"catalog-v0"');
+  });
+
+  test('rejects catalog assets without a matching server checksum', async () => {
+    const data = Buffer.from('catalog payload');
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(data, { status: 200 }))
+      .mockResolvedValueOnce(new Response(data, {
+        status: 200,
+        headers: { 'x-content-sha256': createHash('sha256').update('different').digest('hex') },
+      }));
+    const client = new LicenseApiClient({ baseUrl: 'https://license.example/api/v1', fetchImpl: fetchMock });
+
+    await expect(client.downloadCatalogAsset('token', 'item-id', 'PAYLOAD')).rejects.toMatchObject({
+      code: 'CATALOG_ASSET_INTEGRITY_FAILED',
+    });
+    await expect(client.downloadCatalogAsset('token', 'item-id', 'PAYLOAD')).rejects.toMatchObject({
+      code: 'CATALOG_ASSET_INTEGRITY_FAILED',
     });
   });
 });

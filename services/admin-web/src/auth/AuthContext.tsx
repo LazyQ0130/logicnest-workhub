@@ -34,6 +34,10 @@ const ROLE_PERMISSIONS: Record<string, readonly Permission[]> = {
     Permission.LicenseKeysWrite,
     Permission.DevicesRead,
     Permission.DevicesWrite,
+    Permission.CatalogRead,
+    Permission.CatalogWrite,
+    Permission.DesktopReleasesRead,
+    Permission.DesktopReleasesWrite,
   ],
   [AdminRole.Auditor]: [
     Permission.DashboardRead,
@@ -42,6 +46,8 @@ const ROLE_PERMISSIONS: Record<string, readonly Permission[]> = {
     Permission.LicenseKeysRead,
     Permission.DevicesRead,
     Permission.AuditLogsRead,
+    Permission.CatalogRead,
+    Permission.DesktopReleasesRead,
   ],
 };
 

@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { type ChildProcess, spawn, spawnSync } from 'child_process';
 import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
@@ -41,6 +41,11 @@ type ParsedNpxSpec = {
   installSpec: string;
   extraArgs: string[];
 };
+
+type ProcessTreeKillRunner = (
+  command: string,
+  args: string[],
+) => { error?: Error; status: number | null };
 
 function log(level: 'INFO' | 'WARN' | 'ERROR', message: string, error?: unknown): void {
   const prefix = `[McpLaunchResolver] ${message}`;
@@ -194,6 +199,21 @@ function readInstalledVersion(packageRoot: string): string {
   return pkg.version || 'unknown';
 }
 
+function terminateProcessTree(
+  child: Pick<ChildProcess, 'kill' | 'pid'>,
+  platform = process.platform,
+  runSync: ProcessTreeKillRunner = (command, args) => spawnSync(command, args, {
+    stdio: 'ignore',
+    windowsHide: true,
+  }),
+): void {
+  if (platform === 'win32' && child.pid) {
+    const result = runSync('taskkill', ['/pid', String(child.pid), '/T', '/F']);
+    if (!result.error && result.status === 0) return;
+  }
+  child.kill();
+}
+
 async function runCommand(
   command: string,
   args: string[],
@@ -219,7 +239,7 @@ async function runCommand(
     let stdout = '';
     let stderr = '';
     const timer = setTimeout(() => {
-      child.kill();
+      terminateProcessTree(child);
       reject(new Error(`Command timed out after ${options.timeoutMs}ms: ${command}`));
     }, options.timeoutMs);
     child.stdout?.on('data', chunk => { stdout += String(chunk); });
@@ -326,14 +346,19 @@ export class McpLaunchResolverManager {
   async retry(serverId: string): Promise<void> {
     if (this.inFlight.has(serverId)) {
       await this.inFlight.get(serverId);
-      return;
+    } else {
+      const task = this.resolveServer(serverId, 'manual-retry')
+        .finally(() => {
+          this.inFlight.delete(serverId);
+        });
+      this.inFlight.set(serverId, task);
+      await task;
     }
-    const task = this.resolveServer(serverId, 'manual-retry')
-      .finally(() => {
-        this.inFlight.delete(serverId);
-      });
-    this.inFlight.set(serverId, task);
-    await task;
+
+    const resolution = this.store.getLaunchResolution(serverId);
+    if (resolution?.status === McpLaunchResolutionStatus.Failed) {
+      throw new Error(resolution.error || 'MCP launch resolution failed');
+    }
   }
 
   private async resolveServer(serverId: string, reason: string): Promise<void> {
@@ -500,4 +525,5 @@ export class McpLaunchResolverManager {
 export const __mcpLaunchResolverTestUtils = {
   resolveNpmCommand,
   resolveNodeCommand,
+  terminateProcessTree,
 };

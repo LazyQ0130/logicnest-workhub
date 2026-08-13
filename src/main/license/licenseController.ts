@@ -1,6 +1,12 @@
 import { type LicenseActionResult, type LicenseCredentials, type LicenseMembership, LicensePhase, type LicenseRegistration, type LicenseState, type LicenseUser } from '../../shared/license';
 import { getDeviceFingerprintDigest } from './deviceFingerprint';
-import { LicenseApiClient, LicenseApiError, type LicenseApiPayload } from './licenseApiClient';
+import {
+  LicenseApiClient,
+  LicenseApiError,
+  type LicenseApiPayload,
+  type LicenseCatalogItem,
+  type LicenseCatalogResponse,
+} from './licenseApiClient';
 import { validateOfflineLease } from './offlineLease';
 import type { LicenseSessionRecord, LicenseSessionStore } from './secureSessionStore';
 
@@ -183,6 +189,14 @@ export class LicenseController {
     return this.heartbeatInFlight;
   }
 
+  public fetchCatalog(kind?: LicenseCatalogItem['kind'], etag?: string): Promise<LicenseCatalogResponse> {
+    return this.withAuthorizedToken((accessToken) => this.requireApi().catalog(accessToken, kind, etag));
+  }
+
+  public downloadCatalogAsset(itemId: string, role: string): Promise<Awaited<ReturnType<LicenseApiClient['downloadCatalogAsset']>>> {
+    return this.withAuthorizedToken((accessToken) => this.requireApi().downloadCatalogAsset(accessToken, itemId, role));
+  }
+
   public async logout(): Promise<LicenseState> {
     const accessToken = this.session?.accessToken;
     const refreshToken = this.session?.refreshToken;
@@ -259,6 +273,20 @@ export class LicenseController {
     }
     this.scheduleHeartbeat();
     return this.getState();
+  }
+
+  private async withAuthorizedToken<T>(operation: (accessToken: string) => Promise<T>): Promise<T> {
+    if (!this.session?.accessToken) throw new LicenseApiError(401, 'SESSION_REQUIRED', '请先登录');
+    const currentToken = this.session.accessToken;
+    const expiry = this.session.accessTokenExpiresAt ? Date.parse(this.session.accessTokenExpiresAt) : Number.NaN;
+    if (Number.isFinite(expiry) && expiry - this.now() < 30_000) await this.refresh();
+    try {
+      return await operation(this.session?.accessToken ?? currentToken);
+    } catch (error) {
+      if (!(error instanceof LicenseApiError) || error.status !== 401) throw error;
+      await this.refresh();
+      return operation(this.session?.accessToken ?? currentToken);
+    }
   }
 
   private async applyOnlinePayload(payload: LicenseApiPayload): Promise<void> {

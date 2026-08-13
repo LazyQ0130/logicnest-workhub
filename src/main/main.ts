@@ -166,6 +166,7 @@ import { APP_NAME, APP_PROTOCOL_PREFIX, APP_SCHEME, APP_USER_MODEL_ID, DB_FILENA
 import { createLocalFileProtocolResponse } from './artifactLocalFileProtocol';
 import { authQuotaGateStateFromQuota, AuthSubscriptionStatus, createDefaultAuthQuotaGateState, normalizeAuthQuota } from './authQuota';
 import { type AutoLaunchStatus, getAutoLaunchStatus, isAutoLaunched, setAutoLaunchEnabled } from './autoLaunchManager';
+import { CatalogProvider } from './catalog/catalogProvider';
 import { getRecentComputerUseLogEntries } from './computerUse/computerUseLogs';
 import { type CoworkForkContextMessage, type CoworkMessage, CoworkStore } from './coworkStore';
 import { setLanguage, t } from './i18n';
@@ -399,6 +400,7 @@ import {
 import { isLicenseAuthorized, LicenseController } from './license/licenseController';
 import { resolveLicenseQaE2eRuntime } from './license/qaE2eRuntime';
 import { broadcastLicenseState, registerLicenseIpc } from './license/registerLicenseIpc';
+import { resolveLicenseRuntimeConfig } from './license/runtimeConfig';
 import { ElectronSecureSessionStore } from './license/secureSessionStore';
 import { getLogFilePath, getRecentMainLogEntries, initLogger } from './logger';
 import { type AskUserResponse, McpRuntime } from './mcp/mcpRuntime';
@@ -1892,6 +1894,7 @@ let memoryMigrationDone = false;
 let preventSleepBlockerId: number | null = null;
 let appUpdateCoordinator: AppUpdateCoordinator | null = null;
 let licenseController: LicenseController | null = null;
+let catalogProvider: CatalogProvider | null = null;
 let authorizedRuntimeStarted = false;
 let meetingRoomCoordinator: MeetingRoomCoordinator | null = null;
 let disposeMeetingRoomIpc: (() => void) | null = null;
@@ -6799,6 +6802,8 @@ if (!gotTheLock) {
     getSkillManager,
     getSkillStoreUrl,
     getOpenClawRuntimeAdapter: () => openClawRuntimeAdapter,
+    getCatalog: kind => catalogProvider?.list(kind) ?? Promise.reject(new Error('目录服务尚未初始化')),
+    materializeCatalogAsset: url => catalogProvider?.materialize(url) ?? Promise.reject(new Error('目录服务尚未初始化')),
   });
 
   // Kits IPC handlers
@@ -6807,6 +6812,8 @@ if (!gotTheLock) {
     getKitStoreUrl,
     getSkillManager,
     syncOpenClawConfig,
+    getCatalog: kind => catalogProvider?.list(kind) ?? Promise.reject(new Error('目录服务尚未初始化')),
+    materializeCatalogAsset: url => catalogProvider?.materialize(url) ?? Promise.reject(new Error('目录服务尚未初始化')),
   });
 
   ipcMain.handle(OpenClawEngineIpc.GetStatus, async () => {
@@ -11631,10 +11638,21 @@ if (!gotTheLock) {
     if (restartedMeetingCount > 0) {
       console.log(`[MeetingRoom] paused ${restartedMeetingCount} running meeting(s) after app restart.`);
     }
+    const licenseRuntimeConfig = resolveLicenseRuntimeConfig({
+      env: process.env,
+      isDev,
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+    });
+    if (licenseRuntimeConfig.error) {
+      console.error(`[License] packaged configuration unavailable (reason=${licenseRuntimeConfig.error})`);
+    }
+    if (licenseRuntimeConfig.config.apiBaseUrl) {
+      process.env.LOGICNEST_LICENSE_API_URL = licenseRuntimeConfig.config.apiBaseUrl;
+    }
     licenseController = new LicenseController({
-      apiBaseUrl: process.env.LOGICNEST_LICENSE_API_URL
-        ?? (isDev ? 'http://127.0.0.1:8787/api/v1' : undefined),
-      publicKeyPem: process.env.LOGICNEST_LICENSE_PUBLIC_KEY_PEM,
+      apiBaseUrl: licenseRuntimeConfig.config.apiBaseUrl,
+      publicKeyPem: licenseRuntimeConfig.config.publicKeyPem,
       clientVersion: app.getVersion(),
       deviceFingerprint: resolveLicenseQaE2eRuntime({
         env: process.env,
@@ -11646,6 +11664,11 @@ if (!gotTheLock) {
       onAuthorizationLost: reason => {
         void suspendAuthorizedRuntime(reason);
       },
+    });
+    catalogProvider = new CatalogProvider({
+      controller: licenseController,
+      cacheDirectory: path.join(app.getPath('userData'), 'catalog-cache'),
+      downloadDirectory: path.join(app.getPath('temp'), 'logicnest-catalog-downloads'),
     });
     registerLicenseIpc(licenseController);
     const initialLicenseState = await licenseController.initialize();

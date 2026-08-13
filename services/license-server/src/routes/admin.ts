@@ -12,6 +12,8 @@ import {
   canRole,
   type AdminAuth,
 } from '../services/adminService.js';
+import { CatalogService } from '../services/catalogService.js';
+import { type ChangeLogInput, DesktopReleaseService } from '../services/desktopReleaseService.js';
 
 const loginSchema = z.object({ username: z.string().trim().min(3).max(64), password: z.string().min(8).max(128) });
 const changePasswordSchema = z.object({ currentPassword: z.string().min(8).max(128), newPassword: z.string().min(8).max(128) });
@@ -26,6 +28,30 @@ const auditQuerySchema = paginationSchema.extend({ actorType: z.enum(['USER', 'A
 const userQuerySchema = paginationSchema.extend({ search: z.string().max(64).optional(), status: z.enum(['ACTIVE', 'SUSPENDED']).optional() });
 const keyQuerySchema = paginationSchema.extend({ status: z.enum(['UNUSED', 'REDEEMED', 'REVOKED', 'EXPIRED']).optional(), planId: z.string().uuid().optional(), batchId: z.string().uuid().optional(), search: z.string().max(32).optional() });
 const deviceQuerySchema = paginationSchema.extend({ status: z.enum(['ACTIVE', 'SUSPENDED', 'UNBOUND']).optional(), search: z.string().max(32).optional() });
+const catalogQuerySchema = z.object({ kind: z.enum(['SKILL', 'KIT', 'CONNECTOR']).optional(), status: z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']).optional() });
+const catalogUpdateSchema = z.object({
+  nameZh: z.string().trim().min(1).max(120).optional(),
+  nameEn: z.string().trim().min(1).max(120).nullable().optional(),
+  descriptionZh: z.string().trim().min(4).max(4000).optional(),
+  descriptionEn: z.string().trim().min(4).max(4000).nullable().optional(),
+  sortOrder: z.number().int().min(-100000).max(100000).optional(),
+  tags: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+const catalogBatchSchema = z.object({ releaseIds: z.array(z.string().uuid()).min(1).max(100) });
+const desktopReleaseQuerySchema = z.object({
+  platform: z.enum(['win32']).optional(),
+  arch: z.enum(['x64']).optional(),
+  status: z.enum(['DRAFT', 'PUBLISHED', 'WITHDRAWN', 'ARCHIVED']).optional(),
+});
+const changeLogSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  content: z.array(z.string().trim().min(1).max(4000)).max(100),
+});
+const desktopReleaseUpdateSchema = z.object({
+  changeLogZh: changeLogSchema.optional(),
+  changeLogEn: changeLogSchema.optional(),
+});
 
 const cookieOptions = (config: AppConfig, httpOnly: boolean) => ({
   httpOnly,
@@ -79,8 +105,43 @@ const roles = (...allowed: AdminRole[]) => async (request: FastifyRequest) => {
   if (!request.adminAuth || !canRole(request.adminAuth.role, allowed)) throw forbidden('ADMIN_FORBIDDEN', 'Insufficient administrator permissions');
 };
 
-export const registerAdminRoutes = async (app: FastifyInstance, options: { db: PrismaClient; config: AppConfig; service?: AdminService }) => {
+async function readDesktopReleaseUpload(request: FastifyRequest) {
+  const fields: Record<string, string> = {};
+  let file: { filename: string; mimetype: string; toBuffer: () => Promise<Buffer> } | null = null;
+  for await (const part of request.parts()) {
+    if (part.type === 'file') file = part;
+    else fields[part.fieldname] = String(part.value ?? '');
+  }
+  if (!file) throw forbidden('DESKTOP_RELEASE_FILE_REQUIRED', '请选择 Windows 安装包');
+  const parseLog = (name: string): ChangeLogInput => {
+    try {
+      return changeLogSchema.parse(JSON.parse(fields[name] || '{}'));
+    } catch {
+      throw forbidden('DESKTOP_RELEASE_CHANGELOG_INVALID', '更新日志格式无效');
+    }
+  };
+  return {
+    version: fields.version || '',
+    platform: fields.platform || 'win32',
+    arch: fields.arch || 'x64',
+    changeLogZh: parseLog('changeLogZh'),
+    changeLogEn: parseLog('changeLogEn'),
+    originalName: file.filename,
+    mimeType: file.mimetype,
+    data: await file.toBuffer(),
+  };
+}
+
+export const registerAdminRoutes = async (app: FastifyInstance, options: {
+  db: PrismaClient;
+  config: AppConfig;
+  service?: AdminService;
+  catalogService?: CatalogService;
+  desktopReleaseService?: DesktopReleaseService;
+}) => {
   const service = options.service ?? new AdminService(options.db, options.config);
+  const catalogService = options.catalogService ?? new CatalogService(options.db, options.config);
+  const desktopReleaseService = options.desktopReleaseService ?? new DesktopReleaseService(options.db, options.config);
 
   app.post('/auth/login', { config: { rateLimit: { max: options.config.qaE2e ? 200 : 10, timeWindow: '15 minutes' } } }, async (request, reply) => {
     assertOriginForLogin(request, options.config);
@@ -130,6 +191,63 @@ export const registerAdminRoutes = async (app: FastifyInstance, options: { db: P
   app.patch('/devices/:id/status', { preHandler: [writeAdmin, roles('SUPER_ADMIN', 'OPERATOR')] }, async (request) => { ensurePasswordChanged(request); const actor = await getAdmin(options.db, request); const body = parse(statusSchema, request.body); return service.setDeviceStatus((request.params as { id: string }).id, body.status, body.reason, request, actor); });
   app.post('/devices/:id/unbind', { preHandler: [writeAdmin, roles('SUPER_ADMIN', 'OPERATOR')] }, async (request) => { ensurePasswordChanged(request); const actor = await getAdmin(options.db, request); const body = parse(unbindSchema, request.body ?? {}); return service.unbindDevice((request.params as { id: string }).id, body.reason, request, actor); });
   app.post('/devices/:id/invalidate-sessions', { preHandler: [writeAdmin, roles('SUPER_ADMIN', 'OPERATOR')] }, async (request) => { ensurePasswordChanged(request); const actor = await getAdmin(options.db, request); return service.invalidateDeviceSessions((request.params as { id: string }).id, request, actor); });
+
+  app.get('/catalog/items', { preHandler: [readAdmin, roles('SUPER_ADMIN', 'OPERATOR', 'AUDITOR')] }, async (request) => {
+    ensurePasswordChanged(request);
+    return catalogService.listAdmin(parse(catalogQuerySchema, request.query));
+  });
+  app.post('/catalog/import', { preHandler: [writeAdmin, roles('SUPER_ADMIN', 'OPERATOR')] }, async (request) => {
+    ensurePasswordChanged(request);
+    const actor = await getAdmin(options.db, request);
+    const upload = await request.file();
+    if (!upload || !upload.filename.toLowerCase().endsWith('.zip')) {
+      throw forbidden('CATALOG_ARCHIVE_REQUIRED', '请选择目录 ZIP 包');
+    }
+    return catalogService.importArchive(await upload.toBuffer(), actor, request);
+  });
+  app.patch('/catalog/releases/:id', { preHandler: [writeAdmin, roles('SUPER_ADMIN', 'OPERATOR')] }, async (request) => {
+    ensurePasswordChanged(request);
+    const actor = await getAdmin(options.db, request);
+    return catalogService.updateDraft((request.params as { id: string }).id, parse(catalogUpdateSchema, request.body), actor, request);
+  });
+  app.post('/catalog/releases/publish', { preHandler: [writeAdmin, roles('SUPER_ADMIN', 'OPERATOR')] }, async (request) => {
+    ensurePasswordChanged(request);
+    const actor = await getAdmin(options.db, request);
+    return catalogService.publish(parse(catalogBatchSchema, request.body).releaseIds, actor, request);
+  });
+  app.post('/catalog/releases/archive', { preHandler: [writeAdmin, roles('SUPER_ADMIN', 'OPERATOR')] }, async (request) => {
+    ensurePasswordChanged(request);
+    const actor = await getAdmin(options.db, request);
+    return catalogService.archive(parse(catalogBatchSchema, request.body).releaseIds, actor, request);
+  });
+
+  app.get('/desktop-releases', { preHandler: [readAdmin, roles('SUPER_ADMIN', 'OPERATOR', 'AUDITOR')] }, async (request) => {
+    ensurePasswordChanged(request);
+    return desktopReleaseService.listAdmin(parse(desktopReleaseQuerySchema, request.query));
+  });
+  app.post('/desktop-releases', { preHandler: [writeAdmin, roles('SUPER_ADMIN', 'OPERATOR')] }, async (request) => {
+    ensurePasswordChanged(request);
+    const actor = await getAdmin(options.db, request);
+    return desktopReleaseService.createDraft(await readDesktopReleaseUpload(request), actor, request);
+  });
+  app.patch('/desktop-releases/:id', { preHandler: [writeAdmin, roles('SUPER_ADMIN', 'OPERATOR')] }, async (request) => {
+    ensurePasswordChanged(request);
+    const actor = await getAdmin(options.db, request);
+    const id = parse(z.object({ id: z.string().uuid() }), request.params).id;
+    return desktopReleaseService.updateDraft(id, parse(desktopReleaseUpdateSchema, request.body), actor, request);
+  });
+  app.post('/desktop-releases/:id/publish', { preHandler: [writeAdmin, roles('SUPER_ADMIN', 'OPERATOR')] }, async (request) => {
+    ensurePasswordChanged(request);
+    const actor = await getAdmin(options.db, request);
+    const id = parse(z.object({ id: z.string().uuid() }), request.params).id;
+    return desktopReleaseService.publish(id, actor, request);
+  });
+  app.post('/desktop-releases/:id/withdraw', { preHandler: [writeAdmin, roles('SUPER_ADMIN', 'OPERATOR')] }, async (request) => {
+    ensurePasswordChanged(request);
+    const actor = await getAdmin(options.db, request);
+    const id = parse(z.object({ id: z.string().uuid() }), request.params).id;
+    return desktopReleaseService.withdraw(id, actor, request);
+  });
 
   app.get('/audit-logs', { preHandler: [readAdmin, roles('SUPER_ADMIN', 'AUDITOR')] }, async (request) => { ensurePasswordChanged(request); return service.listAuditLogs(parse(auditQuerySchema, request.query)); });
 };

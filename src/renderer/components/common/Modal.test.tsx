@@ -31,6 +31,34 @@ const Harness: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
   );
 };
 
+const NestedHarness: React.FC = () => {
+  const [outerOpen, setOuterOpen] = useState(false);
+  const [innerOpen, setInnerOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOuterOpen(true)}>open outer</button>
+      <Modal isOpen={outerOpen} onClose={() => setOuterOpen(false)}>
+        <h2>outer</h2>
+        <button type="button" onClick={() => setInnerOpen(true)}>open inner</button>
+        <button type="button">outer action</button>
+      </Modal>
+      <Modal isOpen={innerOpen} onClose={() => setInnerOpen(false)}>
+        <h2>inner</h2>
+        <button type="button" onClick={() => setInnerOpen(false)}>close inner</button>
+        <button
+          type="button"
+          onClick={() => {
+            setInnerOpen(false);
+            setOuterOpen(false);
+          }}
+        >
+          discard
+        </button>
+      </Modal>
+    </>
+  );
+};
+
 describe('Modal accessibility', () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -96,5 +124,35 @@ describe('Modal accessibility', () => {
     expect(document.activeElement).toBe(trigger);
     expect(container.hasAttribute('aria-hidden')).toBe(false);
     expect((container as HTMLDivElement & { inert?: boolean }).inert).toBeFalsy();
+  });
+
+  test('keeps the outer modal interactive after closing a nested modal', () => {
+    act(() => root.render(<NestedHarness />));
+    const trigger = container.querySelector('button') as HTMLButtonElement;
+    trigger.focus();
+    act(() => trigger.click());
+    const outerButton = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button'))
+      .find(button => button.textContent === 'open inner');
+    expect(outerButton).toBeTruthy();
+    act(() => outerButton?.click());
+
+    const closeInner = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button'))
+      .find(button => button.textContent === 'close inner');
+    act(() => closeInner?.click());
+
+    expect(document.querySelector('[role="dialog"] h2')?.textContent).toBe('outer');
+    expect(container.getAttribute('aria-hidden')).toBe('true');
+    expect((container as HTMLDivElement & { inert: boolean }).inert).toBe(true);
+    expect(document.activeElement?.textContent).toBe('open inner');
+
+    act(() => outerButton?.click());
+    const discardButton = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button'))
+      .find(button => button.textContent?.trim() === 'discard');
+    act(() => discardButton?.click());
+
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(container.hasAttribute('aria-hidden')).toBe(false);
+    expect((container as HTMLDivElement & { inert?: boolean }).inert).toBeFalsy();
+    expect(document.activeElement).toBe(trigger);
   });
 });

@@ -17,6 +17,10 @@ export const Permission = {
   DevicesRead: 'devices:read',
   DevicesWrite: 'devices:write',
   AuditLogsRead: 'audit-logs:read',
+  CatalogRead: 'catalog:read',
+  CatalogWrite: 'catalog:write',
+  DesktopReleasesRead: 'desktop-releases:read',
+  DesktopReleasesWrite: 'desktop-releases:write',
 } as const;
 
 export type Permission = (typeof Permission)[keyof typeof Permission];
@@ -199,3 +203,49 @@ export interface QueryPage {
 }
 
 export type QueryValue = string | number | boolean | null | undefined;
+
+export const CatalogKind = { Skill: 'SKILL', Kit: 'KIT', Connector: 'CONNECTOR' } as const;
+export type CatalogKind = (typeof CatalogKind)[keyof typeof CatalogKind];
+
+export const CatalogReleaseStatus = { Draft: 'DRAFT', Published: 'PUBLISHED', Archived: 'ARCHIVED' } as const;
+export type CatalogReleaseStatus = (typeof CatalogReleaseStatus)[keyof typeof CatalogReleaseStatus];
+
+export interface CatalogRelease {
+  id: string;
+  releaseId: string;
+  kind: CatalogKind;
+  slug: string;
+  version: string;
+  nameZh: string;
+  nameEn?: string | null;
+  descriptionZh: string;
+  descriptionEn?: string | null;
+  sortOrder: number;
+  tags: string[];
+  metadata: Record<string, unknown>;
+  status: CatalogReleaseStatus;
+  publishedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  assets: Array<{ role: string; originalName: string; mimeType: string; sizeBytes: number; sha256: string }>;
+}
+
+export const DesktopReleaseStatus = {
+  Draft: 'DRAFT', Published: 'PUBLISHED', Withdrawn: 'WITHDRAWN', Archived: 'ARCHIVED',
+} as const;
+export type DesktopReleaseStatus = (typeof DesktopReleaseStatus)[keyof typeof DesktopReleaseStatus];
+
+export interface DesktopRelease {
+  id: string;
+  version: string;
+  platform: string;
+  arch: string;
+  changeLogZh: { title: string; content: string[] };
+  changeLogEn: { title: string; content: string[] };
+  status: DesktopReleaseStatus;
+  publishedAt?: string | null;
+  withdrawnAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  asset: { id: string; originalName: string; mimeType: string; sizeBytes: number; sha256: string } | null;
+}

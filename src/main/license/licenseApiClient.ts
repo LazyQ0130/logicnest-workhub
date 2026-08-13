@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 export interface LicenseApiPayload {
   accessToken?: string;
@@ -46,6 +46,30 @@ export interface LicenseApiClientOptions {
   baseUrl: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+}
+
+export interface LicenseCatalogItem {
+  id: string;
+  releaseId: string;
+  kind: 'SKILL' | 'KIT' | 'CONNECTOR';
+  slug: string;
+  version: string;
+  nameZh: string;
+  nameEn?: string | null;
+  descriptionZh: string;
+  descriptionEn?: string | null;
+  sortOrder: number;
+  tags: string[];
+  metadata: Record<string, unknown>;
+  status: 'PUBLISHED';
+  publishedAt?: string | null;
+  assets: Array<{ role: string; originalName: string; mimeType: string; sizeBytes: number; sha256: string }>;
+}
+
+export interface LicenseCatalogResponse {
+  items: LicenseCatalogItem[];
+  etag?: string;
+  notModified?: boolean;
 }
 
 export class LicenseApiClient {
@@ -97,6 +121,52 @@ export class LicenseApiClient {
     return this.request('/license/heartbeat', { method: 'POST', accessToken, body: input });
   }
 
+  public async catalog(accessToken: string, kind?: LicenseCatalogItem['kind'], etag?: string): Promise<LicenseCatalogResponse> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/catalog${kind ? `?kind=${encodeURIComponent(kind)}` : ''}`, {
+      method: 'GET',
+      headers: {
+        accept: 'application/json',
+        authorization: `Bearer ${accessToken}`,
+        ...(etag ? { 'if-none-match': etag } : {}),
+      },
+    });
+    if (response.status === 304) return { items: [], etag, notModified: true };
+    const body = await response.json().catch((): null => null) as Record<string, unknown> | null;
+    if (!response.ok) throw parseRawLicenseError(response.status, body);
+    return {
+      items: (Array.isArray(body?.items) ? body.items : []).filter(isCatalogItem),
+      etag: response.headers.get('etag') ?? undefined,
+    };
+  }
+
+  public async downloadCatalogAsset(accessToken: string, itemId: string, role: string): Promise<{
+    data: Buffer; fileName: string; mimeType: string; sizeBytes: number; sha256: string;
+  }> {
+    const response = await this.fetchWithTimeout(
+      `${this.baseUrl}/catalog/${encodeURIComponent(itemId)}/assets/${encodeURIComponent(role)}`,
+      { method: 'GET', headers: { accept: 'application/octet-stream', authorization: `Bearer ${accessToken}` } },
+    );
+    if (!response.ok) {
+      const body = await response.json().catch((): null => null) as Record<string, unknown> | null;
+      throw parseRawLicenseError(response.status, body);
+    }
+    const data = Buffer.from(await response.arrayBuffer());
+    const digest = createHash('sha256').update(data).digest('hex');
+    const expected = response.headers.get('x-content-sha256');
+    if (!expected || digest !== expected.toLowerCase()) {
+      throw new LicenseApiError(502, 'CATALOG_ASSET_INTEGRITY_FAILED', '目录资源校验失败');
+    }
+    const disposition = response.headers.get('content-disposition') ?? '';
+    const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+    return {
+      data,
+      fileName: encodedName ? decodeURIComponent(encodedName) : `${itemId}-${role}.bin`,
+      mimeType: response.headers.get('content-type') ?? 'application/octet-stream',
+      sizeBytes: data.byteLength,
+      sha256: digest,
+    };
+  }
+
   private async request(
     endpoint: string,
     options: { method: 'POST'; accessToken?: string; body?: unknown },
@@ -133,6 +203,51 @@ export class LicenseApiClient {
       clearTimeout(timeout);
     }
   }
+
+  private fetchWithTimeout(input: string, init: RequestInit = {}): Promise<Response> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    const parentSignal = init.signal;
+    const abortFromParent = () => controller.abort();
+    if (parentSignal) {
+      if (parentSignal.aborted) controller.abort();
+      else parentSignal.addEventListener('abort', abortFromParent, { once: true });
+    }
+    return this.fetchImpl(input, { ...init, signal: controller.signal })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) {
+          throw new LicenseApiError(408, 'LICENSE_REQUEST_TIMEOUT', '授权请求超时，请检查网络后重试');
+        }
+        throw error;
+      })
+      .finally(() => {
+        clearTimeout(timeout);
+        parentSignal?.removeEventListener('abort', abortFromParent);
+      });
+  }
+}
+
+function parseRawLicenseError(status: number, body: Record<string, unknown> | null): LicenseApiError {
+  const error = body?.error && typeof body.error === 'object' ? body.error as Record<string, unknown> : body ?? {};
+  return new LicenseApiError(
+    status,
+    typeof error.code === 'string' ? error.code : `HTTP_${status}`,
+    typeof error.message === 'string' ? error.message : '目录服务请求失败',
+    typeof error.requestId === 'string' ? error.requestId : undefined,
+  );
+}
+
+function isCatalogItem(value: unknown): value is LicenseCatalogItem {
+  if (!value || typeof value !== 'object') return false;
+  const item = value as Partial<LicenseCatalogItem>;
+  return typeof item.id === 'string'
+    && typeof item.releaseId === 'string'
+    && (item.kind === 'SKILL' || item.kind === 'KIT' || item.kind === 'CONNECTOR')
+    && typeof item.slug === 'string'
+    && typeof item.version === 'string'
+    && typeof item.nameZh === 'string'
+    && typeof item.descriptionZh === 'string'
+    && Array.isArray(item.assets);
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

@@ -1,7 +1,9 @@
 import {
   AuditOutlined,
+  AppstoreOutlined,
   ClusterOutlined,
   DashboardOutlined,
+  DesktopOutlined,
   KeyOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
@@ -59,6 +61,8 @@ const NAV_ICONS: Record<string, ReactNode> = {
   '/users': <TeamOutlined />,
   '/plans': <KeyOutlined />,
   '/devices': <ClusterOutlined />,
+  '/catalog': <AppstoreOutlined />,
+  '/desktop-releases': <DesktopOutlined />,
   '/audit-logs': <AuditOutlined />,
 };
 

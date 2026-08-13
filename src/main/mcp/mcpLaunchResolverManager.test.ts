@@ -16,8 +16,10 @@ import {
   __mcpLaunchResolverTestUtils,
   isRecoverableNodeRuntimeResolutionError,
   isStaleInstallingResolution,
+  McpLaunchResolverManager,
   packageRootFromInstallDir,
 } from './mcpLaunchResolverManager';
+import type { McpStore } from './mcpStore';
 
 test('packageRootFromInstallDir preserves scoped npm package paths', () => {
   expect(packageRootFromInstallDir('C:\\managed', '@upstash/context7-mcp')).toBe(
@@ -81,4 +83,54 @@ test('isRecoverableNodeRuntimeResolutionError detects Windows node shim ENOENT',
     error: 'npm view exited with code 1',
     updatedAt: Date.now(),
   })).toBe(false);
+});
+
+test('terminateProcessTree kills the full Windows process tree', () => {
+  const kill = vi.fn();
+  const runSync = vi.fn().mockReturnValue({ status: 0 });
+
+  __mcpLaunchResolverTestUtils.terminateProcessTree(
+    { pid: 1234, kill },
+    'win32',
+    runSync,
+  );
+
+  expect(runSync).toHaveBeenCalledWith('taskkill', ['/pid', '1234', '/T', '/F']);
+  expect(kill).not.toHaveBeenCalled();
+});
+
+test('terminateProcessTree falls back to killing the child when taskkill fails', () => {
+  const kill = vi.fn();
+  const runSync = vi.fn().mockReturnValue({ status: 1 });
+
+  __mcpLaunchResolverTestUtils.terminateProcessTree(
+    { pid: 1234, kill },
+    'win32',
+    runSync,
+  );
+
+  expect(kill).toHaveBeenCalledOnce();
+});
+
+test('retry rejects when the persisted launch resolution failed', async () => {
+  const failure = {
+    serverId: 'server-1',
+    resolverKind: McpLaunchResolverKind.Npx,
+    sourceFingerprint: 'fingerprint',
+    status: McpLaunchResolutionStatus.Failed,
+    error: 'npm install failed',
+    updatedAt: Date.now(),
+  };
+  const store = {
+    getLaunchResolution: vi.fn().mockReturnValue(failure),
+  } as unknown as McpStore;
+  const manager = new McpLaunchResolverManager(
+    store,
+    vi.fn(),
+    vi.fn(),
+  );
+  const internal = manager as unknown as { inFlight: Map<string, Promise<void>> };
+  internal.inFlight.set('server-1', Promise.resolve());
+
+  await expect(manager.retry('server-1')).rejects.toThrow('npm install failed');
 });

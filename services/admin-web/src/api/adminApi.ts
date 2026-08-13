@@ -3,7 +3,12 @@ import type {
   AccountStatus,
   AuditLogRecord,
   AuthResponse,
+  CatalogKind,
+  CatalogRelease,
+  CatalogReleaseStatus,
   DashboardStats,
+  DesktopRelease,
+  DesktopReleaseStatus,
   DeviceStatus,
   GenerateKeysResponse,
   LicenseKeyRecord,
@@ -192,6 +197,63 @@ export const adminApi = {
     return apiClient.request<PageResponse<AuditLogRecord>>(
       `/audit-logs${queryString(params)}`,
     );
+  },
+
+  catalogItems(params: { kind?: CatalogKind; status?: CatalogReleaseStatus }) {
+    return apiClient.request<{ items: CatalogRelease[] }>(`/catalog/items${queryString(params)}`);
+  },
+
+  importCatalog(file: File) {
+    const body = new FormData();
+    body.append('archive', file, file.name);
+    return apiClient.request<{ items: CatalogRelease[] }>('/catalog/import', { method: 'POST', body });
+  },
+
+  updateCatalogRelease(releaseId: string, input: Partial<Pick<CatalogRelease,
+    'nameZh' | 'nameEn' | 'descriptionZh' | 'descriptionEn' | 'sortOrder' | 'tags' | 'metadata'>>) {
+    return apiClient.request<CatalogRelease>(`/catalog/releases/${encodeURIComponent(releaseId)}`, { method: 'PATCH', body: input });
+  },
+
+  publishCatalogReleases(releaseIds: string[]) {
+    return apiClient.request<{ items: CatalogRelease[] }>('/catalog/releases/publish', { method: 'POST', body: { releaseIds } });
+  },
+
+  archiveCatalogReleases(releaseIds: string[]) {
+    return apiClient.request<{ archived: number }>('/catalog/releases/archive', { method: 'POST', body: { releaseIds } });
+  },
+
+  desktopReleases(params: { platform?: string; arch?: string; status?: DesktopReleaseStatus } = {}) {
+    return apiClient.request<{ items: DesktopRelease[] }>(`/desktop-releases${queryString(params)}`);
+  },
+
+  uploadDesktopRelease(input: {
+    version: string;
+    platform: string;
+    arch: string;
+    changeLogZh: { title: string; content: string[] };
+    changeLogEn: { title: string; content: string[] };
+    file: File;
+  }) {
+    const body = new FormData();
+    body.append('version', input.version);
+    body.append('platform', input.platform);
+    body.append('arch', input.arch);
+    body.append('changeLogZh', JSON.stringify(input.changeLogZh));
+    body.append('changeLogEn', JSON.stringify(input.changeLogEn));
+    body.append('file', input.file, input.file.name);
+    return apiClient.request<DesktopRelease>('/desktop-releases', { method: 'POST', body });
+  },
+
+  updateDesktopRelease(id: string, input: Partial<Pick<DesktopRelease, 'changeLogZh' | 'changeLogEn'>>) {
+    return apiClient.request<DesktopRelease>(`/desktop-releases/${encodeURIComponent(id)}`, { method: 'PATCH', body: input });
+  },
+
+  publishDesktopRelease(id: string) {
+    return apiClient.request<DesktopRelease>(`/desktop-releases/${encodeURIComponent(id)}/publish`, { method: 'POST' });
+  },
+
+  withdrawDesktopRelease(id: string) {
+    return apiClient.request<DesktopRelease>(`/desktop-releases/${encodeURIComponent(id)}/withdraw`, { method: 'POST' });
   },
 };
 

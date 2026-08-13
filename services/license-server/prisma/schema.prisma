@@ -53,6 +53,25 @@ enum AuditActorType {
   SYSTEM
 }
 
+enum CatalogKind {
+  SKILL
+  KIT
+  CONNECTOR
+}
+
+enum CatalogReleaseStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum DesktopReleaseStatus {
+  DRAFT
+  PUBLISHED
+  WITHDRAWN
+  ARCHIVED
+}
+
 model User {
   id              String          @id @db.Char(36)
   uid             String          @unique @db.VarChar(24)
@@ -214,9 +233,108 @@ model Admin {
   lastLoginAt        DateTime?      @map("last_login_at") @db.DateTime(3)
   sessions           AdminSession[]
   batches            LicenseBatch[]
+  catalogReleasesCreated CatalogRelease[] @relation("CatalogReleaseCreatedBy")
+  catalogReleasesUpdated CatalogRelease[] @relation("CatalogReleaseUpdatedBy")
+  desktopReleasesCreated DesktopRelease[] @relation("DesktopReleaseCreatedBy")
+  desktopReleasesUpdated DesktopRelease[] @relation("DesktopReleaseUpdatedBy")
 
   @@index([status])
   @@map("admins")
+}
+
+model CatalogItem {
+  id        String           @id @db.Char(36)
+  kind      CatalogKind
+  slug      String           @db.VarChar(96)
+  sortOrder Int              @default(0) @map("sort_order")
+  createdAt DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
+  releases  CatalogRelease[]
+
+  @@unique([kind, slug])
+  @@index([kind, sortOrder])
+  @@map("catalog_items")
+}
+
+model CatalogRelease {
+  id               String               @id @db.Char(36)
+  itemId           String               @map("item_id") @db.Char(36)
+  version          String               @db.VarChar(32)
+  nameZh           String               @map("name_zh") @db.VarChar(120)
+  nameEn           String?              @map("name_en") @db.VarChar(120)
+  descriptionZh    String               @map("description_zh") @db.Text
+  descriptionEn    String?              @map("description_en") @db.Text
+  tags             Json?
+  metadata         Json?
+  status           CatalogReleaseStatus @default(DRAFT)
+  publishedAt      DateTime?            @map("published_at") @db.DateTime(3)
+  createdByAdminId String               @map("created_by_admin_id") @db.Char(36)
+  updatedByAdminId String               @map("updated_by_admin_id") @db.Char(36)
+  createdAt        DateTime             @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime             @updatedAt @map("updated_at") @db.DateTime(3)
+  item             CatalogItem          @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  createdByAdmin   Admin                @relation("CatalogReleaseCreatedBy", fields: [createdByAdminId], references: [id], onDelete: Restrict)
+  updatedByAdmin   Admin                @relation("CatalogReleaseUpdatedBy", fields: [updatedByAdminId], references: [id], onDelete: Restrict)
+  assets           CatalogAsset[]
+
+  @@unique([itemId, version])
+  @@index([status, publishedAt])
+  @@index([itemId, status])
+  @@map("catalog_releases")
+}
+
+model CatalogAsset {
+  id           String         @id @db.Char(36)
+  releaseId    String         @map("release_id") @db.Char(36)
+  role         String         @db.VarChar(48)
+  storageKey   String         @unique @map("storage_key") @db.VarChar(160)
+  originalName String         @map("original_name") @db.VarChar(255)
+  mimeType     String         @map("mime_type") @db.VarChar(120)
+  sizeBytes    BigInt         @map("size_bytes") @db.UnsignedBigInt
+  sha256       String         @db.Char(64)
+  createdAt    DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  release      CatalogRelease @relation(fields: [releaseId], references: [id], onDelete: Restrict)
+
+  @@unique([releaseId, role])
+  @@index([releaseId])
+  @@map("catalog_assets")
+}
+
+model DesktopRelease {
+  id               String               @id @db.Char(36)
+  version          String               @db.VarChar(32)
+  platform         String               @db.VarChar(32)
+  arch             String               @db.VarChar(32)
+  changeLogZh      Json                 @map("change_log_zh")
+  changeLogEn      Json                 @map("change_log_en")
+  status           DesktopReleaseStatus @default(DRAFT)
+  publishedAt      DateTime?            @map("published_at") @db.DateTime(3)
+  withdrawnAt      DateTime?            @map("withdrawn_at") @db.DateTime(3)
+  createdByAdminId String               @map("created_by_admin_id") @db.Char(36)
+  updatedByAdminId String               @map("updated_by_admin_id") @db.Char(36)
+  createdAt        DateTime             @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime             @updatedAt @map("updated_at") @db.DateTime(3)
+  createdByAdmin   Admin                @relation("DesktopReleaseCreatedBy", fields: [createdByAdminId], references: [id], onDelete: Restrict)
+  updatedByAdmin   Admin                @relation("DesktopReleaseUpdatedBy", fields: [updatedByAdminId], references: [id], onDelete: Restrict)
+  asset            DesktopReleaseAsset?
+
+  @@unique([version, platform, arch])
+  @@index([platform, arch, status, publishedAt])
+  @@map("desktop_releases")
+}
+
+model DesktopReleaseAsset {
+  id           String         @id @db.Char(36)
+  releaseId    String         @unique @map("release_id") @db.Char(36)
+  storageKey   String         @unique @map("storage_key") @db.VarChar(160)
+  originalName String         @map("original_name") @db.VarChar(255)
+  mimeType     String         @map("mime_type") @db.VarChar(120)
+  sizeBytes    BigInt         @map("size_bytes") @db.UnsignedBigInt
+  sha256       String         @db.Char(64)
+  createdAt    DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  release      DesktopRelease @relation(fields: [releaseId], references: [id], onDelete: Restrict)
+
+  @@map("desktop_release_assets")
 }
 
 model AdminSession {

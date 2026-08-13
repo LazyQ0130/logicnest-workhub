@@ -3,6 +3,9 @@
 const config = require('../electron-builder.json');
 const { BuildEnv } = require('./build-env.cjs');
 const { readBuildKeyfrom } = require('./build-keyfrom.cjs');
+const { generateLicenseBuildConfig } = require('./license-build-config.cjs');
+
+generateLicenseBuildConfig();
 
 // Opt-in web installer (small NSIS stub that downloads the app package from a
 // CDN at install time). Default builds are full offline installers; nothing
