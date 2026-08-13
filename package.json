@@ -49,7 +49,7 @@
     "lint": "eslint src/",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepare": "husky",
+    "prepare": "node scripts/prepare-husky.cjs",
     "brand:assets": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/generate-logicnest-brand-assets.ps1",
     "brand:scan": "node scripts/brand-scan.cjs",
     "license:install": "npm install --prefix services/license-server",
