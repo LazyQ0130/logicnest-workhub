@@ -1,11 +1,13 @@
 'use strict';
 
+const path = require('node:path');
+
 const config = require('../electron-builder.json');
 const { BuildEnv } = require('./build-env.cjs');
 const { readBuildKeyfrom } = require('./build-keyfrom.cjs');
 const { generateLicenseBuildConfig } = require('./license-build-config.cjs');
 
-generateLicenseBuildConfig();
+const { config: licenseBuildConfig } = generateLicenseBuildConfig();
 
 // Opt-in web installer (small NSIS stub that downloads the app package from a
 // CDN at install time). Default builds are full offline installers; nothing
@@ -91,19 +93,45 @@ function mergeExtraResources(platformName) {
 }
 
 const keyfrom = readBuildKeyfrom();
+const isUnsignedWindowsBuild = process.env.LOGICNEST_UNSIGNED_BUILD === '1';
+const windowsArtifactLabel = [
+  keyfrom,
+  licenseBuildConfig.allowInsecureLoopback ? 'qa-local' : null,
+  isUnsignedWindowsBuild ? 'unsigned' : null,
+].filter(Boolean).join('-');
 
 for (const platformName of ['mac', 'win', 'linux']) {
   mergeExtraResources(platformName);
 }
 
+// electron-builder 26 expects Linux desktop metadata through its lazy entry.
+config.linux = {
+  ...(config.linux || {}),
+  desktop: {
+    entry: () => ({
+      Name: '逻栖工枢',
+      Comment: 'AI-assisted coding and productivity tool',
+      Terminal: 'false',
+    }),
+  },
+};
+
 // Unsigned development builds use an explicit no-op signer so electron-builder
 // does not download its cross-platform signing bundle (which contains macOS
 // symlinks that cannot be extracted on locked-down Windows hosts). This flag is
 // never implicit: production CI must omit it and configure its trusted signer.
-if (process.env.LOGICNEST_UNSIGNED_BUILD === '1') {
+if (isUnsignedWindowsBuild) {
   config.win = {
     ...(config.win || {}),
-    sign: './scripts/win-sign-unsigned.cjs',
+    signExecutable: false,
+  };
+} else {
+  config.win = {
+    ...(config.win || {}),
+    signtoolOptions: {
+      ...(config.win?.signtoolOptions || {}),
+      sign: path.join(__dirname, 'win-sign.cjs'),
+    },
   };
 }
 
@@ -116,7 +144,7 @@ config.dmg = {
 
 config.nsis = {
   ...(config.nsis || {}),
-  artifactName: `LogicNestWorkHub-Setup-\${arch}-\${version}-${keyfrom}.\${ext}`,
+  artifactName: `LogicNestWorkHub-Setup-\${arch}-\${version}-${windowsArtifactLabel}.\${ext}`,
 };
 
 if (isWebInstallerEnabled()) {
@@ -129,11 +157,12 @@ if (isWebInstallerEnabled()) {
   };
   config.nsisWeb = {
     appPackageUrl: resolveWebPackageUrl(keyfrom),
-    artifactName: `LogicNestWorkHub-WebSetup-\${arch}-\${version}-${keyfrom}.\${ext}`,
+    artifactName: `LogicNestWorkHub-WebSetup-\${arch}-\${version}-${windowsArtifactLabel}.\${ext}`,
   };
   console.log(`[WebInstaller] nsis-web target enabled, app package url: ${config.nsisWeb.appPackageUrl}`);
 }
 
 console.log(`[Keyfrom] configured artifact keyfrom as ${keyfrom}`);
+console.log(`[WindowsBuild] artifact label configured as ${windowsArtifactLabel}`);
 
 module.exports = config;

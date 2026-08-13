@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import * as https from 'node:https';
 
 export interface LicenseApiPayload {
   accessToken?: string;
@@ -44,7 +45,8 @@ export class LicenseApiError extends Error {
 
 export interface LicenseApiClientOptions {
   baseUrl: string;
-  fetchImpl?: typeof fetch;
+  fetchImpl?: LicenseFetch;
+  trustedCaPem?: string;
   timeoutMs?: number;
 }
 
@@ -72,14 +74,17 @@ export interface LicenseCatalogResponse {
   notModified?: boolean;
 }
 
+type LicenseFetch = (input: string, init?: RequestInit) => Promise<Response>;
+
 export class LicenseApiClient {
   private readonly baseUrl: string;
-  private readonly fetchImpl: typeof fetch;
+  private readonly fetchImpl: LicenseFetch;
   private readonly timeoutMs: number;
 
   public constructor(options: LicenseApiClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.fetchImpl = options.fetchImpl
+      ?? (options.trustedCaPem ? createTrustedCaFetch(options.trustedCaPem) : fetch);
     this.timeoutMs = options.timeoutMs ?? 12_000;
   }
 
@@ -248,6 +253,70 @@ function isCatalogItem(value: unknown): value is LicenseCatalogItem {
     && typeof item.nameZh === 'string'
     && typeof item.descriptionZh === 'string'
     && Array.isArray(item.assets);
+}
+
+function createTrustedCaFetch(trustedCaPem: string): LicenseFetch {
+  return async (input, init = {}) => {
+    const url = new URL(input);
+    if (url.protocol !== 'https:') throw new Error('Trusted CA transport requires HTTPS');
+    const headers = new Headers(init.headers);
+    const body = init.body;
+    if (body !== undefined && body !== null && typeof body !== 'string') {
+      throw new Error('Trusted CA transport only accepts string request bodies');
+    }
+
+    return new Promise<Response>((resolve, reject) => {
+      let settled = false;
+      const rejectOnce = (error: Error) => {
+        if (settled) return;
+        settled = true;
+        init.signal?.removeEventListener('abort', abortRequest);
+        reject(error);
+      };
+      const abortRequest = () => {
+        rejectOnce(Object.assign(new Error('Request aborted'), { name: 'AbortError' }));
+        request.destroy();
+      };
+      const request = https.request(url, {
+        method: init.method ?? 'GET',
+        headers: Object.fromEntries(headers.entries()),
+        ca: trustedCaPem,
+        rejectUnauthorized: true,
+      }, response => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer | string) => {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        });
+        response.on('end', () => {
+          if (settled) return;
+          settled = true;
+          init.signal?.removeEventListener('abort', abortRequest);
+          const responseHeaders = new Headers();
+          for (const [name, value] of Object.entries(response.headers)) {
+            if (Array.isArray(value)) {
+              for (const item of value) responseHeaders.append(name, item);
+            } else if (value !== undefined) {
+              responseHeaders.set(name, String(value));
+            }
+          }
+          resolve(new Response(Buffer.concat(chunks), {
+            status: response.statusCode ?? 500,
+            statusText: response.statusMessage,
+            headers: responseHeaders,
+          }));
+        });
+        response.on('error', rejectOnce);
+      });
+      request.on('error', rejectOnce);
+      if (init.signal?.aborted) {
+        abortRequest();
+        return;
+      }
+      init.signal?.addEventListener('abort', abortRequest, { once: true });
+      if (body) request.write(body);
+      request.end();
+    });
+  };
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

@@ -11650,9 +11650,13 @@ if (!gotTheLock) {
     if (licenseRuntimeConfig.config.apiBaseUrl) {
       process.env.LOGICNEST_LICENSE_API_URL = licenseRuntimeConfig.config.apiBaseUrl;
     }
+    if (licenseRuntimeConfig.config.trustedCaPem) {
+      process.env.LOGICNEST_LICENSE_CA_PEM = licenseRuntimeConfig.config.trustedCaPem;
+    }
     licenseController = new LicenseController({
       apiBaseUrl: licenseRuntimeConfig.config.apiBaseUrl,
       publicKeyPem: licenseRuntimeConfig.config.publicKeyPem,
+      trustedCaPem: licenseRuntimeConfig.config.trustedCaPem,
       clientVersion: app.getVersion(),
       deviceFingerprint: resolveLicenseQaE2eRuntime({
         env: process.env,
@@ -12231,7 +12235,11 @@ if (!gotTheLock) {
   };
 
   // 启动应用
-  initApp().catch(console.error);
+  initApp().catch(error => {
+    console.error('[Main] initApp failed:', error instanceof Error
+      ? { name: error.name, message: error.message, stack: error.stack }
+      : error);
+  });
 
   // 当所有窗口关闭时退出应用
   app.on('window-all-closed', () => {

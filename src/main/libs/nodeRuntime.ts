@@ -18,6 +18,13 @@ export interface NodePackageCliCommand {
   shell: boolean;
 }
 
+const REQUIRED_BUNDLED_NPM_DEPENDENCIES = [
+  'graceful-fs',
+  '@npmcli/arborist',
+  'npm-registry-fetch',
+  'cacache',
+] as const;
+
 type CommandLookup = (
   command: string,
   env?: NodeJS.ProcessEnv,
@@ -117,15 +124,36 @@ export function resolveNodeRuntimeForSpawn(
   };
 }
 
+export function getBundledNpmRuntimeRoot(): string {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'npm-runtime');
+  }
+  return path.join(app.getAppPath(), 'node_modules', 'npm');
+}
+
+export function isBundledNpmRuntimeComplete(root = getBundledNpmRuntimeRoot()): boolean {
+  const cliPaths = ['npm-cli.js', 'npx-cli.js'].map(cli => path.join(root, 'bin', cli));
+  if (cliPaths.some(candidate => !fs.existsSync(candidate))) return false;
+  return REQUIRED_BUNDLED_NPM_DEPENDENCIES.every(dependency => (
+    fs.existsSync(path.join(root, 'node_modules', ...dependency.split('/')))
+  ));
+}
+
 export function resolveBundledNodePackageCli(cliName: 'npm' | 'npx'): string | null {
   const cliFile = `${cliName}-cli.js`;
   const candidates = app.isPackaged
-    ? [path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'npm', 'bin', cliFile)]
+    ? [
+        path.join(getBundledNpmRuntimeRoot(), 'bin', cliFile),
+        path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'npm', 'bin', cliFile),
+      ]
     : [
         path.join(app.getAppPath(), 'node_modules', 'npm', 'bin', cliFile),
         path.join(process.cwd(), 'node_modules', 'npm', 'bin', cliFile),
       ];
-  return candidates.find(candidate => fs.existsSync(candidate)) || null;
+  return candidates.find(candidate => {
+    const root = path.dirname(path.dirname(candidate));
+    return fs.existsSync(candidate) && isBundledNpmRuntimeComplete(root);
+  }) || null;
 }
 
 export function resolveNodePackageCliCommand(
